@@ -60,56 +60,64 @@ sub function1
     foreach my $index (@indices)
     {
         chomp($index);
-
+        print "INDEX = $index\n";
         ## a.
         # Search R1 reads for each barcode at the start of the sequence,
         # save to a temp file (-A 2 -B 1 options: include 2 lines after, 1 line before match)
-        system("zgrep -A 2 -B 1 ^$index $R1_file > tmp/$index\_$sample\_R1.tmp");
+        system("zgrep -A 2 -B 1 ^$index $R1_file > tmp/$index\_$sample\_R1.tmp");                   # 1996
 
         ## b.
         # Remove the "--" separator between each read in each temp file and save as a FASTQ file
-        system("grep -v ^- tmp/$index\_$sample\_R1.tmp > $index\_$sample\_R1.fastq");
+        system("grep -v ^- tmp/$index\_$sample\_R1.tmp > $index\_$sample\_R1.fastq");               # 1332
 
         ## c.
         # Trim off barcodes from each read using the barcode length after accounting for the
         # restriction site (TGCA) within the barcode
         my $clip = $index;
-# TODO # Likely have to request RE site from user to clip from indices
+## TODO # Likely have to request RE site from user to clip from indices
         $clip =~ s/$//;
-        my $len =length($clip);
+        my $len = length($clip);
         open CLIPPED, ">tmp/$index\_$sample\_R1-clip.fastq";
-        select CLIPPED;
+        select(CLIPPED);
         fix_r1("$index\_$sample\_R1.fastq", $len);
-        select STDOUT;
+        CLIPPED->flush();
+        select(STDOUT);
+        close CLIPPED;
 
         ## d.
-        # Place FASTQ headers for filtered R1 reads into a separate barcode-specific file
+        # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
         open HEADERS, ">tmp/$index.list";
-        select HEADERS;
+        select(HEADERS);
         get_id("tmp/$index\_$sample\_R1-clip.fastq");
-        select STDOUT;
+        HEADERS->flush();
+        select(STDOUT);
+        close HEADERS;
 
         ## e.
         # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
-        open (R2_READS, ">$index\_$sample\_R2.fastq");
-        select R2_READS;
+        open R2_READS, ">$index\_$sample\_R2.fastq";
+        select(R2_READS);
         get_r2($R2_file, "tmp/$index.list");
-        select STDOUT;
-
-        #Clean up
-        close CLIPPED; close HEADERS; close R2_READS;
+        R2_READS->flush();                                                                # 852
+        select(STDOUT);
+        close R2_READS;
 
         # Summary of progress
         $count++;
         print "Demultiplexed barcode $index [$count/$num_indices]\n";
-        summarize_indexed($index);
+        #summarize_indexed($index, $sample);
     }
 }
 
+##### Summarize step 1 by listing raw read counts, demultiplexed read counts
 sub summarize_indexed
 {
     my $index = $_[0];
-
+    my $sample = $_[1];
+    my $summary_file = "$sample\_demultiplex\_summary.txt";
+    open (SUMMARY, $summary_file);
+    print SUMMARY "Barcode\tRead count\n";
+    print SUMMARY "$index\t";
 }
 
 ##################################
@@ -117,7 +125,7 @@ sub summarize_indexed
 ##################################
 
 ## Written by Larissa
-# Input: A FASTQ file of filtered R1 reads, barcode length
+# Input: A FASTQ file of filtered R1 reads, barcode length (bcl)
 sub fix_r1
 {
     my $seq_file = $_[0];
@@ -176,14 +184,17 @@ sub get_id
     my $file = $_[0];
 
     open FILE, $file;
-    while(<FILE>)
+    do
     {
-        my $id1     = $_;
+        my $id1     = <FILE>;
         my $seq     = <FILE>;
         my $id2     = <FILE>;
         my $qual    = <FILE>;
+
         print $id1;
     }
+    while (!eof(FILE));
+    close FILE;
 }
 
 1;
