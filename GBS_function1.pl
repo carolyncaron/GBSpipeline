@@ -4,11 +4,12 @@ use strict;
 use warnings;
 
 ##### STEP 1 : DEMULTIPLEX READS #####
-##### Usage: f1 sample_name input1 input2
+##### Usage: f1 sample_name index_file R1_file R2_file
 ##### Required user input:
-#####   A sample name for naming files after processing reads (no spaces allowed)
-#####   A FASTQ file (zipped or unzipped) containing raw Read 1 reads
-#####   A FASTQ file (zipped or unzipped) containing raw Read 2 reads
+#####   sample_name : A sample name for naming files after processing reads (no spaces allowed)
+#####   index_file : A file containing the indices (aka barcodes) for distinguishing samples, provided by Illumina
+#####   R1_file : A FASTQ file (zipped or unzipped) containing raw Read 1 reads
+#####   R2_file : A FASTQ file (zipped or unzipped) containing raw Read 2 reads
 ##### Output:
 #####   $index_sample_R1.fastq for R1 reads beginning with barcode $index
 #####   $index_sample_R2.fastq for R2 reads which pair with filtered R1 reads
@@ -46,7 +47,7 @@ sub function1
         if (length($qual) != length($seq)) { die "ERROR: Quality is not the same length as sequence in $R_file.\n"; }
         # Check if the FASTQ format is Illumina version 1.3
         #if ($id =~ /\/[12]$/ ) { die "ERROR: Illumina 1.3 FASTQ file format detected. Please use version 1.8+.\n"; }
-        close READS;
+        close READS or die "ERROR: Could not close $R_file\n";
     }
 
     # Place indices in an array
@@ -60,7 +61,7 @@ sub function1
     foreach my $index (@indices)
     {
         chomp($index);
-        print "INDEX = $index\n";
+
         ## a.
         # Search R1 reads for each barcode at the start of the sequence,
         # save to a temp file (-A 2 -B 1 options: include 2 lines after, 1 line before match)
@@ -77,47 +78,70 @@ sub function1
 ## TODO # Likely have to request RE site from user to clip from indices
         $clip =~ s/$//;
         my $len = length($clip);
-        open CLIPPED, ">tmp/$index\_$sample\_R1-clip.fastq";
+        open CLIPPED, ">$index\_$sample\_R1-clip.fastq" or die "ERROR: Could not create $index\_$sample\_R1-clip\n";
         select(CLIPPED);
         fix_r1("$index\_$sample\_R1.fastq", $len);
-        CLIPPED->flush();
+        #CLIPPED->flush();
         select(STDOUT);
-        close CLIPPED;
+        close CLIPPED or die "ERROR: Could not close $index\_$sample\_R1-clip\n";
 
         ## d.
         # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
-        open HEADERS, ">tmp/$index.list";
+        open HEADERS, ">tmp/$index.list" or die "ERROR: Could not create tmp/$index.list\n";
         select(HEADERS);
-        get_id("tmp/$index\_$sample\_R1-clip.fastq");
-        HEADERS->flush();
+        get_id("$index\_$sample\_R1-clip.fastq");
+        #HEADERS->flush();
         select(STDOUT);
-        close HEADERS;
+        close HEADERS or die "ERROR: Could not close tmp/$index.list\n";
 
         ## e.
         # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
-        open R2_READS, ">$index\_$sample\_R2.fastq";
+        open R2_READS, ">$index\_$sample\_R2.fastq" or die "ERROR: Could not create $index\_$sample\_R2.fastq";
         select(R2_READS);
         get_r2($R2_file, "tmp/$index.list");
-        R2_READS->flush();                                                                # 852
+        #R2_READS->flush();
         select(STDOUT);
-        close R2_READS;
+        close R2_READS or die "ERROR: Could not close $index\_$sample\_R2.fastq\n";
 
         # Summary of progress
         $count++;
         print "Demultiplexed barcode $index [$count/$num_indices]\n";
-        #summarize_indexed($index, $sample);
     }
+
+    create_summary($index_file, $sample);
 }
 
 ##### Summarize step 1 by listing raw read counts, demultiplexed read counts
-sub summarize_indexed
+sub create_summary
 {
-    my $index = $_[0];
+    my $index_file = $_[0];
     my $sample = $_[1];
     my $summary_file = "$sample\_demultiplex\_summary.txt";
-    open (SUMMARY, $summary_file);
-    print SUMMARY "Barcode\tRead count\n";
-    print SUMMARY "$index\t";
+    open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
+    print SUMMARY "Barcode\tRead1 count\tRead2 count\n";
+
+    my @indices = `cat $index_file`;
+    foreach my $index (@indices)
+    {
+        my ( $read1_count, $read2_count ) = 0;
+        my $R1_file = "$index\_$sample\_R1.fastq";
+        my $line_count = system("wc -l $R1_file");
+        print "LC: $line_count\n";
+        $line_count =~ s/^\s+(\d+)\s.*$/$1/;
+
+        # Divide line_count by 4 to determine read count in a fastq file
+        $read1_count = ( $line_count / 4 );
+
+        my $R2_file = "$index\_$sample\_R2.fastq";
+        $line_count = system("wc -l $R2_file");
+        $line_count =~ s/^\s+(\d+)\s/$1/;
+        $read2_count = ( $line_count / 4 );
+
+        print SUMMARY "$index\t$read1_count\t$read2_count\n";
+    }
+    print "Demultiplexing completed - see summary file:\n",
+          "\t$summary_file\n";
+    close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 
 ##################################
@@ -131,7 +155,7 @@ sub fix_r1
     my $seq_file = $_[0];
     my $bcl = $_[1];
 
-    open(FH, $seq_file);
+    open(FH, $seq_file) or die "ERROR: Could not open $seq_file\n";
 
     while(<FH>) {
         my $q1    = $_;
@@ -142,7 +166,7 @@ sub fix_r1
         $qual1 =~ s/^.{$bcl}//;
         print $q1.$seq1.$qq1.$qual1;
     }
-    close FH;
+    close FH or die "ERROR: Could not close $seq_file\n";
 }
 
 ## Written by Larissa
@@ -153,7 +177,7 @@ sub get_r2
     my $headers = $_[1];
     my $href;
 
-    open(HEAD, $headers);
+    open(HEAD, $headers) or die "ERROR: Could not open $headers\n";
     while(<HEAD>) {
         chomp;
         # Depending on the read format, here are two cases:
@@ -161,8 +185,9 @@ sub get_r2
         $_ =~ s/(\w+)\/1$/$1\/2/;   # This works with the test data set
         $href->{$_}->{'found'} = 1;
     }
+    close HEAD or die "ERROR: Could not close $headers\n";
 
-    open(FH, $file);
+    open(FH, $file) or die "ERROR: Could not open $file\n";
     while(<FH>)
     {
         my $q1    = $_;
@@ -175,7 +200,7 @@ sub get_r2
             print $q1.$seq1.$qq1.$qual1;
         }
     }
-    close FH;
+    close FH or die "ERROR: Could not close $file\n";
 }
 
 # Extracts the header from each read in a provided FASTQ file
@@ -183,7 +208,7 @@ sub get_id
 {
     my $file = $_[0];
 
-    open FILE, $file;
+    open FILE, $file or die "ERROR: Could not open $file\n";
     do
     {
         my $id1     = <FILE>;
@@ -194,7 +219,7 @@ sub get_id
         print $id1;
     }
     while (!eof(FILE));
-    close FILE;
+    close FILE or die "ERROR: Could not close $file\n";
 }
 
 1;
