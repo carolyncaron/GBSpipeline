@@ -132,7 +132,7 @@ sub f3
             my $alignlog = "align/$index\_$sample\_align.log";
             open ALIGNLOG, ">$alignlog" or die "ERROR: Unable to create log file $alignlog\n";
             print ALIGNLOG join " ", @$full_buf;
-            close ALIGNLOG;
+            close ALIGNLOG or die "ERROR: Unable to close log file $alignlog\n";
         } else
         {
             print "ERROR: bowtie2 did not complete successfully:\n";
