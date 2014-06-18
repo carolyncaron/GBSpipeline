@@ -4,12 +4,16 @@
 ##### Usage: f4 samtools_dir
 ##### Required input:
 #####   samtools_dir - location of user's copy of samtools
-#####
-#####
+##### Output:
+#####   align/$index_$sample_mapped.sam
+#####   align/$index_$sample_mapped.sorted.sam
+#####   align/$index_$sample_mapped.bam
+#####   align/$index_$sample_mapped.sorted.bam
+#####   variants/$index_$sample_mapped.bcf
+#####   variants/$index_$sample_mapped.vcf
 
 use strict;
 use warnings;
-use IPC::Cmd qw[run];
 
 sub f4
 {
@@ -55,7 +59,8 @@ sub f4
         {   die "ERROR: Could not sort align/$index\_$sample\_mapped.sam: $error_message\n@stderr_buf";   }
 
         # 4c. Convert to BAM format (Creates .fai files from the reference genome then BAM)
-        $cmd = "samtools view -bT $reference_genome align/$index\_$sample\_mapped.sorted.sam > align/$index\_$sample\_mapped.bam";
+        $cmd = "samtools view -bT $reference_genome align/$index\_$sample\_mapped.sorted.sam ";
+        $cmd .= "> align/$index\_$sample\_mapped.bam";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
@@ -76,7 +81,8 @@ sub f4
         {   die "ERROR: Failed to index $index\_$sample\_mapped.sorted.bam: $error_message\n@stderr_buf";   }
 
         #4e. Identify genomic variants using mpileup
-        $cmd = "samtools mpileup -f $reference_genome -g -I -B -D align/$index\_$sample\_mapped.sorted.bam > variants/$index\_$sample\_mapped.bcf";
+        $cmd = "samtools mpileup -f $reference_genome -g -I -B -D ";
+        $cmd .= "align/$index\_$sample\_mapped.sorted.bam > variants/$index\_$sample\_mapped.bcf";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)

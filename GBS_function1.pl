@@ -1,8 +1,5 @@
 #!/usr/bin/perl -w
 
-use strict;
-use warnings;
-
 ##### STEP 1 : DEMULTIPLEX READS #####
 ##### Usage: f1 sample_name index_file R1_file R2_file
 ##### Required user input:
@@ -17,21 +14,21 @@ use warnings;
 #####   /tmp/$index_sample_R1-clip.fastq for R1 reads trimmed of barcode $index
 #####   /tmp/$index.list A list of R1 FASTQ headers starting with $index
 
+use strict;
+use warnings;
+
 sub function1
 {
     # Collect function-specific parameters
     my $sample = $_[0];
     my $index_file = $_[1];
     unless ( -f $index_file && -r $index_file )
-    {
-        die "ERROR: $index_file does not exist or is unreadable.\n";
-    }
+    {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
+
     my $R1_file = $_[2];
     my $R2_file = $_[3];
     unless ( -f $R1_file && -r $R1_file && -f $R2_file && -r $R2_file )
-    {
-        die "ERROR: Files $R1_file and/or $R2_file do not exist or are unreadable.\n";
-    }
+    {   die "ERROR: Files $R1_file and/or $R2_file do not exist or are unreadable.\n";  }
 
     # Check the files containing reads that they are in FASTQ format, version Illumina 1.8+
     foreach my $R_file ($R1_file, $R2_file)
@@ -53,7 +50,7 @@ sub function1
     # Place indices in an array
     my @indices = `cat $index_file`;
     my $num_indices = $#indices + 1;
-    die "ERROR: indices.list exists but cannot be opened.\n" if ($num_indices == 0);
+    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
 
     my $count = 0;
     system("mkdir -p tmp/");
@@ -65,11 +62,11 @@ sub function1
         ## a.
         # Search R1 reads for each barcode at the start of the sequence,
         # save to a temp file (-A 2 -B 1 options: include 2 lines after, 1 line before match)
-        system("zgrep -A 2 -B 1 ^$index $R1_file > tmp/$index\_$sample\_R1.tmp");                   # 1996
+        system("zgrep -A 2 -B 1 ^$index $R1_file > tmp/$index\_$sample\_R1.tmp");
 
         ## b.
         # Remove the "--" separator between each read in each temp file and save as a FASTQ file
-        system("grep -v ^- tmp/$index\_$sample\_R1.tmp > $index\_$sample\_R1.fastq");               # 1332
+        system("grep -v ^- tmp/$index\_$sample\_R1.tmp > $index\_$sample\_R1.fastq");
 
         ## c.
         # Trim off barcodes from each read using the barcode length after accounting for the
@@ -87,7 +84,7 @@ sub function1
 
         ## d.
         # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
-        open HEADERS, ">tmp/$index.list" or die "ERROR: Could not create tmp/$index.list\n";
+        open HEADERS, ">tmp/$index\_$sample.list" or die "ERROR: Could not create tmp/$index\_$sample.list\n";
         select(HEADERS);
         get_id("$index\_$sample\_R1-clip.fastq");
         #HEADERS->flush();
@@ -98,7 +95,7 @@ sub function1
         # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
         open R2_READS, ">$index\_$sample\_R2.fastq" or die "ERROR: Could not create $index\_$sample\_R2.fastq";
         select(R2_READS);
-        get_r2($R2_file, "tmp/$index.list");
+        get_r2($R2_file, "tmp/$index\_$sample.list");
         #R2_READS->flush();
         select(STDOUT);
         close R2_READS or die "ERROR: Could not close $index\_$sample\_R2.fastq\n";
@@ -108,7 +105,7 @@ sub function1
         print "Demultiplexed barcode $index [$count/$num_indices]\n";
     }
 
-    create_summary($index_file, $sample);
+    #create_summary($index_file, $sample);
 }
 
 ##### Summarize step 1 by listing raw read counts, demultiplexed read counts
@@ -124,7 +121,7 @@ sub create_summary
     foreach my $index (@indices)
     {
         my ( $read1_count, $read2_count ) = 0;
-        my $R1_file = "$index\_$sample\_R1.fastq";
+        my $R1_file = "$index\_$sample\_R1-clip.fastq";
         my $line_count = system("wc -l $R1_file");
         print "LC: $line_count\n";
         $line_count =~ s/^\s+(\d+)\s.*$/$1/;

@@ -1,20 +1,25 @@
 #!/usr/bin/perl -w
 
-use strict;
-use warnings;
-use IPC::Cmd qw[run];
-
 ##### STEP 2 : TRIM DEMULTIPLEXED READS #####
 ##### Usage: f2 trimmomatic_path trim_file
 ##### Required input:
-#####   trimmomatic_path - The full pathname to the trimmomatic jar file
-#####   trim_file - A list of sequences to filter out the reads (ie. Illumina adaptors)
-#####
-#####
+#####   trimmomatic_path : The full pathname to the trimmomatic jar file
+#####   trim_file : A list of sequences to filter out the reads (ie. Illumina adaptors)
+##### Output:
+#####   trim/$index_$sample_R1-s.fastq
+#####   trim/$index_$sample_R1-p.fastq
+#####   trim/$index_$sample_R2-s.fastq
+#####   trim/$index_$sample_R2-p.fastq
+#####   trim/$index_$sample_output.log
+
+use strict;
+use warnings;
 
 sub f2
 {
+    #############################################
     ##### DEFAULT VARIABLES FOR TRIMMOMATIC #####
+    #############################################
     # Version
         my $version = '0.32';
     # ILLUMINACLIP:
@@ -30,6 +35,7 @@ sub f2
         my $trailing = '3';
     # MINLEN:
         my $minlen = '36';
+    #############################################
 
     # Collect function-specific parameters
     my $trimmomatic_path = $_[0];
@@ -37,8 +43,12 @@ sub f2
     my $sample = $_[2];
     my $index_file = $_[3];
 
+    # Ensure index_file exists in the cwd
+    unless ( -f $index_file && -r $index_file )
+    {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
+
     # Check for trimmomatic
-    unless ( -e "$trimmomatic_path" )
+    unless ( -s "$trimmomatic_path" )
     {
         print "WARNING: Can't locate Trimmomatic at $trimmomatic_path.\n",
               "Would you like to install v$version now in the cwd? (yes/no) ";
@@ -62,24 +72,32 @@ sub f2
 
     # Check for trim_file
     unless ( -r "$trim_file" && -f "$trim_file" )
-    {
-        die "ERROR: $trim_file does not exist or is not readable.\n";
-    }
+    {   die "ERROR: $trim_file does not exist or is not readable.\n";   }
 
     system("mkdir -p trim/");
 
-    # Run trimmomatic
     my @indices = `cat $index_file`;
     foreach my $index (@indices)
     {
         chomp($index);
+
+        my $R1_reads = "$index\_$sample\_R1-clip.fastq";
+        my $R2_reads = "$index\_$sample\_R2.fastq";
+
+        unless ( -f "$R1_reads" && -r "$R1_reads" )
+        {   die "ERROR: $R1_reads does not exist or is unreadable.\n"; }
+        unless ( -f "$R2_reads" && -r "$R2_reads" )
+        {   die "ERROR: $R2_reads does not exist or is unreadable.\n"; }
+
+        # Run Trimmomatic
         my $cmd = "java -classpath $trimmomatic_path org.usadellab.trimmomatic.TrimmomaticPE ";
         $cmd .= "-phred33 ";
         $cmd .= "-trimlog trim/$index.trim.log ";
-        $cmd .= "$index\_$sample\_R1-clip.fastq $index\_$sample\_R2.fastq ";
+        $cmd .= "$R1_reads $R2_reads ";
         $cmd .= "trim/$index\_$sample\_R1-p.fastq trim/$index\_$sample\_R1-s.fastq ";
         $cmd .= "trim/$index\_$sample\_R2-p.fastq trim/$index\_$sample\_R2-s.fastq ";
-        $cmd .= "ILLUMINACLIP:$trim_file:$seed_mismatches:$palindrome_clip_threshold:$simple_clip_threshold ";
+        $cmd .= "ILLUMINACLIP:$trim_file:$seed_mismatches:";
+        $cmd .= "$palindrome_clip_threshold:$simple_clip_threshold ";
         $cmd .= "LEADING:$leading ";
         $cmd .= "TRAILING:$trailing ";
         $cmd .= "SLIDINGWINDOW:$window_size:$required_quality ";
@@ -90,8 +108,11 @@ sub f2
         if ($success)
         {
             print "Trimmomatic successfully finished trimming $index indexed reads.\n";
-            open TRIMLOG, ">trim/$index\_$sample\_output.log";
+            my $trimlog = "trim/$index\_$sample\_output.log";
+            open TRIMLOG, ">$trimlog";
             print TRIMLOG join " ", @$full_buf;
+            my $summary = `grep 'Input Read Pairs' $trimlog`;
+            print "$summary\n";
         } else
         {
             print "ERROR: Trimmomatic did not complete successfully:\n";
