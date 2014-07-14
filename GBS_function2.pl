@@ -76,6 +76,15 @@ sub f2
 
     system("mkdir -p trim/");
 
+    # Create summary file
+    my $summary_file = "$sample\_trim\_summary.txt";
+    open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
+    print SUMMARY "Barcode\tInput Read Pairs\tSurviving Read Pairs\t% Both Surviving\t",
+        "Only Forward Surviving\t% Forward Surviving\tOnly Reverse Surviving\t% Reverse Surviving\t",
+        "Dropped Reads\t% Dropped\n";
+    close SUMMARY or die "Unable to close $summary_file\n";
+
+    # BEGIN trimming by index
     my @indices = `cat $index_file`;
     foreach my $index (@indices)
     {
@@ -108,22 +117,49 @@ sub f2
         if ($success)
         {
             print "Trimmomatic successfully finished trimming $index indexed reads.\n";
-            my $trimlog = "trim/$index\_$sample\_output.log";
+            my $trimlog = "trim/$index\_trimmomatic\_output.log";
             open TRIMLOG, ">$trimlog";
             print TRIMLOG join " ", @$full_buf;
-            my $summary = `grep 'Input Read Pairs' $trimlog`;
-            print "$summary\n";
         } else
         {
             print "ERROR: Trimmomatic did not complete successfully:\n";
             die "$error_message\n@$stderr_buf\n";
         }
+
+        summarize_trim($index, $sample, \@$stderr_buf);
     }
 }
 
-sub create_summary
+##### Summarize step 2 using trimmomatic output:
+##### Index    Input read pairs    Forward only surviving  Reverse only surviving  Dropped
+sub summarize_trim
 {
+    my $index = $_[0];
+    my $sample = $_[1];
+    my @trimmomatic_output = @{$_[2]};
 
+    my $summary_file = "$sample\_trim\_summary.txt";
+    open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
+
+    # Grep for the line containing stats about the trimming process
+    # Save values of interest into variables
+    my ($line_of_interest) = grep /Input Read Pairs/, @trimmomatic_output;
+    my @trim_info = split(/ /, $line_of_interest);
+    my $input_read_pairs = $trim_info[3];
+    my $both_surviving = $trim_info[6];
+    my $both_surviving_percent = $trim_info[7];
+    my $forward_surviving = $trim_info[11];
+    my $forward_surviving_percent = $trim_info[12];
+    my $reverse_surviving = $trim_info[16];
+    my $reverse_surviving_percent = $trim_info[17];
+    my $dropped = $trim_info[19];
+    my $dropped_percent = $trim_info[20];
+
+    print SUMMARY "$index\t$input_read_pairs\t$both_surviving\t$both_surviving_percent\t",
+        "$forward_surviving\t$forward_surviving_percent\t$reverse_surviving\t",
+        "$reverse_surviving_percent\t$dropped\t$dropped_percent\n";
+
+    close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 
 1;

@@ -52,9 +52,32 @@ sub function1
     my $num_indices = $#indices + 1;
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
 
-    my $count = 0;
+    # Create a directory for files that will only be kept temporarily
     system("mkdir -p tmp/");
 
+    # Keep counts on the curent index, R2 reads for an index, and the total raw read pair counts
+    my ( $count, $R2_count, $R1_raw_count, $R2_raw_count ) = 0;
+    my $wc_cmd = "wc -l $R1_file $R2_file";
+    my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
+        run( command => $wc_cmd, verbose => 0 );
+    if ($success)
+    {
+        # Split the buffer to extract only the line count
+        my @wc_buffer = split(' ',"@$stdout_buf");
+        $R1_raw_count = ($wc_buffer[0] / 4);
+        $R2_raw_count = ($wc_buffer[2] / 4);
+    } else
+    {
+        die "Unable to do line counts of files $R1_file and $R2_file: $error_message\n@$stderr_buf\n";
+    }
+
+    # Create summary file
+    my $summary_file = "$sample\_demultiplex\_summary.txt";
+    open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
+    print SUMMARY "Barcode\tRead1 count\t%of Raw Read1\tRead2 count\t% of Raw Read2\n";
+    close SUMMARY or die "Unable to close $summary_file\n";
+
+    # BEGIN demultiplex
     foreach my $index (@indices)
     {
         chomp($index);
@@ -73,7 +96,7 @@ sub function1
         # restriction site (TGCA) within the barcode
         my $clip = $index;
 ## TODO # Likely have to request RE site from user to clip from indices
-        $clip =~ s/$//;
+        $clip =~ s/TGCA$//;
         my $len = length($clip);
         open CLIPPED, ">$index\_$sample\_R1-clip.fastq" or die "ERROR: Could not create $index\_$sample\_R1-clip\n";
         select(CLIPPED);
@@ -95,7 +118,7 @@ sub function1
         # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
         open R2_READS, ">$index\_$sample\_R2.fastq" or die "ERROR: Could not create $index\_$sample\_R2.fastq";
         select(R2_READS);
-        get_r2($R2_file, "tmp/$index\_$sample.list");
+        $R2_count = get_r2($R2_file, "tmp/$index\_$sample.list");
         #R2_READS->flush();
         select(STDOUT);
         close R2_READS or die "ERROR: Could not close $index\_$sample\_R2.fastq\n";
@@ -103,41 +126,44 @@ sub function1
         # Summary of progress
         $count++;
         print "Demultiplexed barcode $index [$count/$num_indices]\n";
+        summarize_demultiplex($index, $sample, $R2_count, $R1_raw_count, $R2_raw_count);
     }
-
-    #create_summary($index_file, $sample);
 }
 
-##### Summarize step 1 by listing raw read counts, demultiplexed read counts
-sub create_summary
+##### Summarize step 1 by listing demultiplexed read counts
+##### Index   Read 1 count  % Raw R1    Read 2 count   % Raw R2
+sub summarize_demultiplex
 {
-    my $index_file = $_[0];
+    my $index = $_[0];
     my $sample = $_[1];
+    my $R2_count = $_[2];
+    my $R1_raw_count = $_[3];
+    my $R2_raw_count = $_[4];
+
     my $summary_file = "$sample\_demultiplex\_summary.txt";
-    open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
-    print SUMMARY "Barcode\tRead1 count\tRead2 count\n";
+    open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
 
-    my @indices = `cat $index_file`;
-    foreach my $index (@indices)
+    my $R1_count = 0;
+    my $R1_demultiplexed = "tmp/$index\_$sample.list";
+    my $wc_cmd = "wc -l $R1_demultiplexed";
+    my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
+        run( command => $wc_cmd, verbose => 0 );
+    if ($success)
     {
-        my ( $read1_count, $read2_count ) = 0;
-        my $R1_file = "$index\_$sample\_R1-clip.fastq";
-        my $line_count = system("wc -l $R1_file");
-        print "LC: $line_count\n";
-        $line_count =~ s/^\s+(\d+)\s.*$/$1/;
-
-        # Divide line_count by 4 to determine read count in a fastq file
-        $read1_count = ( $line_count / 4 );
-
-        my $R2_file = "$index\_$sample\_R2.fastq";
-        $line_count = system("wc -l $R2_file");
-        $line_count =~ s/^\s+(\d+)\s/$1/;
-        $read2_count = ( $line_count / 4 );
-
-        print SUMMARY "$index\t$read1_count\t$read2_count\n";
+        # Split the buffer to extract only the line count
+        my @wc_buffer = split(' ',"@$stdout_buf");
+        # No need to divide by 4 as this file only contained FASTQ header lines
+        $R1_count = $wc_buffer[0];
     }
-    print "Demultiplexing completed - see summary file:\n",
-          "\t$summary_file\n";
+    else
+    {
+        die "ERROR: Unable to do line count of file $R1_demultiplexed: $error_message\n@$stderr_buf\n";
+    }
+    # Calculate the percentage of raw reads demultiplexed
+    my $R1_percent = ( $R1_count / $R1_raw_count ) * 100;
+    my $R2_percent = ( $R2_count / $R2_raw_count ) * 100;
+
+    printf (SUMMARY "%s\t%d\t%.2f%%\t%d\t%.2f%%\n", $index, $R1_count, $R1_percent, $R2_count, $R2_percent);
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 
@@ -173,6 +199,7 @@ sub get_r2
     my $file = $_[0];
     my $headers = $_[1];
     my $href;
+    my $r2_count = 0;
 
     open(HEAD, $headers) or die "ERROR: Could not open $headers\n";
     while(<HEAD>) {
@@ -195,9 +222,11 @@ sub get_r2
         my $qual1 = <FH>;
         if (defined $href->{$search}->{'found'}){
             print $q1.$seq1.$qq1.$qual1;
+            $r2_count++;
         }
     }
     close FH or die "ERROR: Could not close $file\n";
+    return $r2_count;
 }
 
 # Extracts the header from each read in a provided FASTQ file

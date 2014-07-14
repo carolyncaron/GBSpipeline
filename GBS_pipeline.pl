@@ -3,7 +3,7 @@
 ##### GBS_Pipeline.pl - a multi-step pipeline for GBS analysis #####
 ##### Usage: ./GBS_Pipeline.pl [function] [arg1] [arg2] ...
 ##### Functions:
-#####   function1 sample_name barcode_file read1_file read2_file
+#####   function1 sample_name re_site barcode_file read1_file read2_file
 #####   function2 trimmomatic_path trim_file
 #####   function3 bowtie2_dir reference_genome [-- options]
 #####   function4 samtools_dir
@@ -30,23 +30,25 @@ GBS_Pipeline.pl - A complete set of commands to demultiplex, trim, align and cal
 The pipeline contains a set of steps (functions) that can be called individually to
 complete a GBS analysis given multiplexed paired-end read data.
 
-The GBS_Pipeline should be placed in a new directory created specifically for the GBS
-analysis to be performed. Running all steps of the pipeline will create the following
-directories:
+It is recommended that the GBS_Pipeline files be placed in a new directory created
+specifically for the GBS analysis to be performed. Running all steps of the pipeline will
+create the following directories:
 
-trim/ align/ variants/
+F<trim/ align/ variants/>
 
 =head2 FUNCTIONS
 
 =over 6
 
-=item B<function1> sample_name F<barcode_file read1_file read2_file>
+=item B<function1> sample_name re_site F<barcode_file read1_file read2_file>
 
 Demultiplex reads based on a barcode file (provided by Illumina to distinguish samples
 used in sequencing).
 
 sample_name can be any name assigned to the reads, to be used in naming output files.
 Avoid use of whitespace (Ex: lens culinaris => lens_culinaris)
+
+re_site is the restriction enzyme site to be clipped from the sequences
 
 read1_file and read2_file should be provided in FASTQ format version Illumina 1.8+
 
@@ -161,6 +163,24 @@ and bcftools.
 
 =back
 
+=head1 SUMMARIES
+
+=over 5
+
+=item F<samplename_demultiplex_summary.txt>
+
+ Provides an overview after demultiplexing raw reads.
+
+ Barcode: The barcode associated with this set of reads
+ Read1 count: The number of R1 reads that contained the barcode
+ % of Raw Read1: The % of raw R1 reads that contained the barcode
+ Read2 count: The number of R2 reads that contained the barcode
+ $ of Raw Read2: The % of raw R2 reads that contained the barcode
+
+=item F<samplename_trim_summary.txt>
+
+=back
+
 =head1 AUTHOR
 
 Carolyn Caron - <carolyn.caron@usask.ca>
@@ -257,25 +277,25 @@ if ( exists ( $ARGV[0] ) )
     {
         when ( /f1/ || /demultiplex/ )
         {
-            unless ($num_args == 5)
+            unless ($num_args == 4)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
-                die "--Try: Perl GBS_pipeline.pl function1 sample_name index_file RE_site",
+                die "--Try: Perl GBS_pipeline.pl function1 sample_name RE_site index_file ",
                     "/path/to/file1/filename1.fastq /path/to/file2/filename2.fastq\n";
             }
 
             my $sample = $args[0];
+            #my $RE_site = $args[1];
             my $index_file = $args[1];
-            my $RE_site = $args[2];
-            my $R1_file = $args[3];
-            my $R2_file = $args[4];
+            my $R1_file = $args[2];
+            my $R2_file = $args[3];
 
             #my $start = Time::HiRes::gettimeofday();
 
             print "Calling $FUNCTION ...\n";
 
             require "$Bin/GBS_function1.pl";
-            function1($sample, $index_file, $RE_site, $R1_file, $R2_file);
+            function1($sample, $index_file, $R1_file, $R2_file);
 
             # Save the sample and index file into the configuration file
             add_to_config("SAMPLE", $sample, "The generic sample name used in naming files during processing");
@@ -358,14 +378,13 @@ if ( exists ( $ARGV[0] ) )
 }
 else
 {
-    # Looks at the cwd for files/directories present and estimates at what stage in the
-    # pipeline it left off
-
+    # Looks at the GBS pipeline directory for files/directories present and estimates at
+    # what stage in the pipeline it left off
 
 
 
     # If no expected files present, print the entire POD
-    pod2usage(-verbose => 2, -msg => "No parameters given. See: perldoc GBS_Pipeline.pl");
+    #pod2usage(-verbose => 2, -msg => "No parameters given. See: perldoc GBS_Pipeline.pl");
 }
 
 #########################
