@@ -57,9 +57,9 @@ sub f3
 
     # Check for the bowtie2 index files in the same directory as the reference genome,
     # otherwise build the bowtie2 index from the reference genome sequence
-    if ( -f "$reference_basename.1.bt2" && -f "$reference_basename.2.bt2" && \
-         -f "$reference_basename.3.bt2" && -f "$reference_basename.4.bt2" && \
-         -f "$reference_basename.rev.1.bt2" && -f "$reference_basename.rev.2.bt2" )
+    if ( -s "$reference_basename.1.bt2" && -s "$reference_basename.2.bt2" && \
+         -s "$reference_basename.3.bt2" && -s "$reference_basename.4.bt2" && \
+         -s "$reference_basename.rev.1.bt2" && -s "$reference_basename.rev.2.bt2" )
     {
         print "Reference genome index files present, proceeding to make alignments.\n";
     }
@@ -68,6 +68,7 @@ sub f3
         unless ( -s "$bowtie2_dir/bowtie2-build")
         {   die "ERROR: Could not locate bowtie2-build in $bowtie2_dir\n";   }
 
+        print "Creating reference index files... \n";
         my $cmd = "$bowtie2_dir/bowtie2-build $reference_genome $reference_basename";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
@@ -94,6 +95,12 @@ sub f3
               "-k $max_valid_alignments -X $max_fragment_length -R $max_reseed_rate ",
               "-p $num_threads\n";
     }
+
+    # Create summary file
+    my $summary_file = "$sample\_align\_summary.txt";
+    open SUMMARY, ">$summary_file" or die "ERROR: Could not open $summary_file\n";
+    print SUMMARY "Index\tTotal input Reads\tReads Paired\t% Reads Paired\tOver Alignment Rate\n";
+    close SUMMARY or die "ERROR: Could not close $summary_file\n";
 
     my @indices = `cat $index_file`;
     foreach my $index (@indices)
@@ -138,7 +145,42 @@ sub f3
             print "ERROR: bowtie2 did not complete successfully:\n";
             die "$error_message\n@$stderr_buf\n";
         }
+
+        summarize_align($index, $sample, \@$stderr_buf);
     }
+}
+
+##############################
+##### Summarize step 3
+##### Index     # of reads aligned  % of reads aligned
+##############################
+sub summarize_align
+{
+    my $index = $_[0];
+    my $sample = $_[1];
+    my @bowtie2_output = @{$_[2]};
+
+    # All the info is in the first array element, so just store it as a string
+    # such that it can be split up into pieces
+    my $sample_summary = $bowtie2_output[0];
+    # Eliminate indenting and newlines to clean it up
+    $sample_summary =~ s/  //g;
+    $sample_summary =~ s/\n/ /g;
+    my @align_info = split(/ /, $sample_summary);
+
+    # Save values of interest into variables
+    my $input_reads = $align_info[0];
+    my $paired_reads = $align_info[4];
+    my $percent_paired = $align_info[5];
+    my $overall_alignment_percent = $align_info[29];
+
+    #print "Input reads: $input_reads\nPaired reads: $paired_reads\nPercent paired: $percent_paired\nOverall: $overall_alignment_percent\n";
+    #print join " | ", @align_info;
+
+    my $summary_file = "$sample\_align\_summary.txt";
+    open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
+    print SUMMARY "$index\t$input_reads\t$paired_reads\t$percent_paired\t$overall_alignment_percent\n";
+    close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 
 1;

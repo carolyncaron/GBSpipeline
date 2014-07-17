@@ -130,8 +130,11 @@ sub f2
     }
 }
 
+#################################
 ##### Summarize step 2 using trimmomatic output:
-##### Index    Input read pairs    Forward only surviving  Reverse only surviving  Dropped
+##### Index    Input read pairs    Both surviving   Both surviving %    Forward only surviving  Forward surviving %
+#####   Reverse only surviving  Reverse surviving %     Dropped    Dropped %
+#################################
 sub summarize_trim
 {
     my $index = $_[0];

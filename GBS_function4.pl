@@ -45,7 +45,7 @@ sub f4
         my $sam_file = "align/$index\_$sample.sam";
 
         # 4a. Filter samfiles of sequences which did not align to save space
-        my $cmd = "samtools view -ShF 4 -T $reference_genome $sam_file > align/$index\_$sample\_mapped.sam";
+        my $cmd = "$samtools_dir/samtools view -ShF 4 -T $reference_genome $sam_file > align/$index\_$sample\_mapped.sam";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
@@ -56,43 +56,48 @@ sub f4
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Could not sort align/$index\_$sample\_mapped.sam: $error_message\n@stderr_buf";   }
+        {   die "ERROR: Could not sort align/$index\_$sample\_mapped.sam: $error_message\n@$stderr_buf";   }
 
         # 4c. Convert to BAM format (Creates .fai files from the reference genome then BAM)
-        $cmd = "samtools view -bT $reference_genome align/$index\_$sample\_mapped.sorted.sam ";
+        $cmd = "$samtools_dir/samtools view -bT $reference_genome align/$index\_$sample\_mapped.sorted.sam ";
         $cmd .= "> align/$index\_$sample\_mapped.bam";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to convert $index\_$sample\_mapped.sorted.sam to BAM format: $error_message\n@stderr_buf";   }
+        {   die "ERROR: Failed to convert $index\_$sample\_mapped.sorted.sam to BAM format: $error_message\n@$stderr_buf";   }
+
+        print "Index $index files converted from .sam to .bam\n";
 
         # 4c. Sort BAM
-        $cmd = "samtools sort align/$index\_$sample\_mapped.bam align/$index\_$sample\_mapped.sorted";
+        $cmd = "$samtools_dir/samtools sort align/$index\_$sample\_mapped.bam align/$index\_$sample\_mapped.sorted";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to sort $index\_$sample\_mapped.bam: $error_message\n@stderr_buf";   }
+        {   die "ERROR: Failed to sort $index\_$sample\_mapped.bam: $error_message\n@$stderr_buf";   }
 
         # 4d. Index BAM
-        $cmd = "samtools index align/$index\_$sample\_mapped.sorted.bam";
+        $cmd = "$samtools_dir/samtools index align/$index\_$sample\_mapped.sorted.bam";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to index $index\_$sample\_mapped.sorted.bam: $error_message\n@stderr_buf";   }
+        {   die "ERROR: Failed to index $index\_$sample\_mapped.sorted.bam: $error_message\n@$stderr_buf";   }
 
         #4e. Identify genomic variants using mpileup
-        $cmd = "samtools mpileup -f $reference_genome -g -I -B -D ";
+        $cmd = "$samtools_dir/samtools mpileup -f $reference_genome -g -I -B -D ";
         $cmd .= "align/$index\_$sample\_mapped.sorted.bam > variants/$index\_$sample\_mapped.bcf";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to identify genomic variants with mpileup: $error_message\n@stderr_buf";   }
+        {   die "ERROR: Failed to identify genomic variants with mpileup: $error_message\n@$stderr_buf";   }
 
-        $cmd = "bcftools view -N -c -g -I -v variants/$index\_$sample\_mapped.bcf > variants/$index\_$sample\_mapped.vcf";
+        $cmd = "bcftools view -c -g -I -v variants/$index\_$sample\_mapped.bcf > variants/$index\_$sample\_mapped.vcf";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
+
+        print "Completed variant calls for index $index\n";
+
     }
 }
 
