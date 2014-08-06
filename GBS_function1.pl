@@ -128,10 +128,47 @@ sub function1
         print "Demultiplexed barcode $index [$count/$num_indices]\n";
         summarize_demultiplex($index, $sample, $R2_count, $R1_raw_count, $R2_raw_count);
     }
+
+    # Search for reads that are missing a barcode
+    # Create a master file containing headers of R1 reads with found indices
+    print "Placing reads without an barcode into a separate file... \n";
+    my $indexed_list = "tmp/indexed\_$sample\_R1.list";
+    my $concat_cmd = "cat tmp/*\_$sample.list > $indexed_list";
+    ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
+            run( command => $concat_cmd, verbose => 0 );
+    if ($success)
+    {
+        foreach my $read_pair ('R1', 'R2')
+        {
+            my $unindexed = "unindexed\_$sample\_$read_pair.fastq";
+            my $read_file;
+            if ($read_pair eq 'R1')
+            {
+                $read_file = $R1_file;
+            } else
+            {
+                $read_file = $R2_file;
+            }
+            open NO_INDEX, ">$unindexed" or die "ERROR: Could not create $unindexed\n";
+            select(NO_INDEX);
+            $R2_count = get_unindexed($read_file, $indexed_list, $read_pair);
+            select(STDOUT);
+            close NO_INDEX or die "ERROR: Could not close $unindexed\_$sample\_$read_pair.fastq.\n";
+            print "$read_pair reads without an index placed in $unindexed\n";
+        }
+        summarize_demultiplex("unindexed", $sample, $R2_count, $R1_raw_count, $R2_raw_count);
+    }
+    else
+    {
+        print "ERROR: Could not concatenate R1 header files into one file:\n";
+        die "$error_message\n@$stderr_buf\n";
+    }
 }
 
+#################################
 ##### Summarize step 1 by listing demultiplexed read counts
 ##### Index   Read 1 count  % Raw R1    Read 2 count   % Raw R2
+#################################
 sub summarize_demultiplex
 {
     my $index = $_[0];
@@ -144,7 +181,15 @@ sub summarize_demultiplex
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
 
     my $R1_count = 0;
-    my $R1_demultiplexed = "tmp/$index\_$sample.list";
+    my $R1_demultiplexed;
+    if ($index eq 'unindexed')
+    {
+        $R1_demultiplexed = "tmp/indexed\_$sample\_R1.list";
+    }
+    else
+    {
+        $R1_demultiplexed = "tmp/$index\_$sample.list";
+    }
     my $wc_cmd = "wc -l $R1_demultiplexed";
     my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
         run( command => $wc_cmd, verbose => 0 );
@@ -159,6 +204,13 @@ sub summarize_demultiplex
     {
         die "ERROR: Unable to do line count of file $R1_demultiplexed: $error_message\n@$stderr_buf\n";
     }
+
+    # If summarizing unindexed reads, adjust $R1_count (currently counts # of indexed reads)
+    if ($index eq 'unindexed')
+    {
+        $R1_count = ( $R1_raw_count - $R1_count );
+    }
+
     # Calculate the percentage of raw reads demultiplexed
     my $R1_percent = ( $R1_count / $R1_raw_count ) * 100;
     my $R2_percent = ( $R2_count / $R2_raw_count ) * 100;
@@ -246,6 +298,49 @@ sub get_id
     }
     while (!eof(FILE));
     close FILE or die "ERROR: Could not close $file\n";
+}
+
+## Written by Larissa
+# Input: A file of raw reads (reads), a file of read headers that have been demultiplexed (indexed_reads)
+sub get_unindexed
+{
+    my $reads = $_[0];
+    my $indexed_reads = $_[1];
+    my $read_pair = $_[2];
+    my $href;
+    my $read_count = 0;
+
+    # Iterate through all headers of R1 reads that have a barcode, save in a hash
+    open(IDX, $indexed_reads) or die "ERROR: Could not open $indexed_reads\n";
+    while(<IDX>)
+    {
+        chomp;
+        if ($read_pair eq 'R2')
+        {
+            $_ =~ s/1:N:0:/2:N:0:/;
+            $_ =~ s/(\w+)\/1$/$1\/2/;
+        }
+        $href->{$_}->{'found'} = 1;
+    }
+    close IDX or die "ERROR: Could not close $indexed_reads\n";
+
+    # Iterate through the raw reads and if not present in the hash, print to a new file
+    open(FH, $reads) or die "ERROR: Could not open $reads\n";
+    while(<FH>)
+    {
+        my $q1    = $_;
+        my $search = $q1;
+        chomp $search;
+        my $seq1  = <FH>;
+        my $qq1   = <FH>;
+        my $qual1 = <FH>;
+        if (!defined $href->{$search}->{'found'}){
+            print $q1.$seq1.$qq1.$qual1;
+            $read_count++;
+        }
+    }
+    close FH or die "ERROR: Could not close $reads\n";
+    return $read_count;
 }
 
 1;

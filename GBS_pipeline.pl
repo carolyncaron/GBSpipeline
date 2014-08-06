@@ -179,6 +179,22 @@ and bcftools.
 
 =item F<samplename_trim_summary.txt>
 
+ Provides an overview after trimming demultiplexed reads.
+
+ Index: The index differentiating a sample's set of reads
+ Input Read Pairs: The number of paired-end reads prior to trimming
+ Surviving Read Pairs: The number of reads where both pairs survived
+ % Both Surviving: The % of both paired reads surviving
+ Only Forward Surviving: The number of forward-orientated reads that
+    survived but the other pair did not
+ % Forward Surviving: The % of forward-orientated reads that survived
+ Only Reverse Surviving: The number of reverse-oriented reads that
+    survived but the other pair did not
+ % Reverse Surviving: The % of reverse-orientated reads that survived
+ Dropped Reads: The number of reads dropped due to contamination or
+    low quality
+ % Dropped: The % of reads dropped
+
 =back
 
 =head1 AUTHOR
@@ -270,17 +286,17 @@ if ( exists ( $ARGV[0] ) )
     my @args = @ARGV;
     my $num_args = $#args + 1;
 
-    print "User specified function $FUNCTION with $num_args args: @args\n";
+    #print "User specified function $FUNCTION with $num_args args: @args\n";
 
     # Use a switch statement for accessing functions
     given($FUNCTION)
     {
-        when ( /f1/ || /demultiplex/ )
+        when ( /function1/ || /f1/ || /demultiplex/ )
         {
             unless ($num_args == 4)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
-                die "--Try: Perl GBS_pipeline.pl function1 sample_name RE_site index_file ",
+                die "--Try: Perl GBS_pipeline.pl function1 sample_name index_file ",
                     "/path/to/file1/filename1.fastq /path/to/file2/filename2.fastq\n";
             }
 
@@ -301,9 +317,10 @@ if ( exists ( $ARGV[0] ) )
             add_to_config("SAMPLE", $sample, "The generic sample name used in naming files during processing");
             add_to_config("INDEX_FILE", $index_file, "The filename of the list of indices (aka barcodes) provided by Illumina");
 
+            print "Completed $FUNCTION.\n";
             #summarize($FUNCTION, $start);
         }
-        when ( /f2/ || /trim_reads/ )
+        when ( /function2/ || /f2/ || /trim_reads/ )
         {
             unless ($num_args == 2)
             {
@@ -318,20 +335,22 @@ if ( exists ( $ARGV[0] ) )
             chomp(my $sample = `grep 'SAMPLE' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $index_file = `grep 'INDEX_FILE' $CONFIG_FILE | cut -d'=' -f2`);
 
+            ######## TODO #########
             # Save any options provided into an array
+
 
             print "Calling $FUNCTION ...\n";
             require "$Bin/GBS_function2.pl";
             f2($trimmomatic_path, $trim_file, $sample, $index_file);
+            print "Completed $FUNCTION.\n";
         }
-        when ( /f3/ || /align_reads/ )
+        when ( /function3/ || /f3/ || /align_reads/ )
         {
             unless ($num_args >= 2)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
                 die "--Try: ./GBS_pipeline.pl function3 /path/to/bowtie2_dir/ path/to/reference_genome.FASTA\n";
             }
-            print '@args array: '; print join(" ",@args); print "\n";
 
             my $bowtie2_dir = $args[0];
             my $reference_genome = $args[1];
@@ -348,10 +367,11 @@ if ( exists ( $ARGV[0] ) )
 
             # Give the subroutine the remaining args (for bowtie2) as an array reference
             f3($bowtie2_dir, $reference_genome, $sample, $index_file, \@args);
+            print "Completed $FUNCTION.\n";
 
             add_to_config("REFERENCE",$reference_genome,"The pathname of the reference genome sequence.");
         }
-        when ( /f4/ || /SNP_calling/ )
+        when ( /function4/ || /f4/ || /SNP_calling/ )
         {
             my $samtools_dir = $args[0];
             unless ($num_args == 1)
@@ -368,6 +388,7 @@ if ( exists ( $ARGV[0] ) )
             print "Calling $FUNCTION ...\n";
             require "$Bin/GBS_function4.pl";
             f4($samtools_dir, $sample, $index_file, $reference_genome);
+            print "Completed $FUNCTION.\n";
         }
         default
         {
@@ -376,7 +397,7 @@ if ( exists ( $ARGV[0] ) )
         }
     }
 }
-else
+else ######## TODO ########
 {
     # Looks at the GBS pipeline directory for files/directories present and estimates at
     # what stage in the pipeline it left off

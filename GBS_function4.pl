@@ -97,7 +97,6 @@ sub f4
         {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
 
         print "Completed variant calls for index $index\n";
-
     }
 }
 
