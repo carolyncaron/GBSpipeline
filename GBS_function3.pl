@@ -99,7 +99,7 @@ sub f3
     # Create summary file
     my $summary_file = "$sample\_align\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "Index\tTotal input Reads\tReads Paired\t% Reads Paired\tOver Alignment Rate\n";
+    print SUMMARY "Index\tInput Reads\tReads Paired\t% Reads Paired\tOverall Alignment Rate\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 
     my @indices = `cat $index_file`;

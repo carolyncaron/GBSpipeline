@@ -5,6 +5,7 @@
 ##### Required user input:
 #####   sample_name : A sample name for naming files after processing reads (no spaces allowed)
 #####   index_file : A file containing the indices (aka barcodes) for distinguishing samples, provided by Illumina
+#####   RE_site: A short nucleotide string representing the rare-cutter restriction site used in extracting the reads
 #####   R1_file : A FASTQ file (zipped or unzipped) containing raw Read 1 reads
 #####   R2_file : A FASTQ file (zipped or unzipped) containing raw Read 2 reads
 ##### Output:
@@ -19,14 +20,17 @@ use warnings;
 
 sub function1
 {
-    # Collect function-specific parameters
+    # Collect function-specific parameters and check their validity
     my $sample = $_[0];
     my $index_file = $_[1];
     unless ( -f $index_file && -r $index_file )
     {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
 
-    my $R1_file = $_[2];
-    my $R2_file = $_[3];
+    my $RE_site = $_[2];
+    unless ( $RE_site !~ /(ATGC)/i ) { die "ERROR: Restriction enzyme site must contain only nucleotides [ACGTN].\n"; }
+
+    my $R1_file = $_[3];
+    my $R2_file = $_[4];
     unless ( -f $R1_file && -r $R1_file && -f $R2_file && -r $R2_file )
     {   die "ERROR: Files $R1_file and/or $R2_file do not exist or are unreadable.\n";  }
 
@@ -39,7 +43,7 @@ sub function1
         my $id2 = <READS>;
         my $qual = <READS>;
         if ($id !~ /^\@/) { die "ERROR: Header does not begin with \@; $R_file is not a valid FASTQ file.\n"; }
-        if ($seq !~ /[ACTGN]/i) { die "ERROR: Sequence is not composed of only nucleotides [ACTGN] in $R_file.\n"; }
+        if ($seq !~ /[ACTGN]/i) { die "ERROR: Sequence is not composed of only nucleotides [ACGTN] in $R_file.\n"; }
         if ($id2 !~ /^\+/) { die "ERROR: Second header does not begin with \+; $R_file is not a valid FASTQ file.\n"; }
         if (length($qual) != length($seq)) { die "ERROR: Quality is not the same length as sequence in $R_file.\n"; }
         # Check if the FASTQ format is Illumina version 1.3
@@ -93,10 +97,10 @@ sub function1
 
         ## c.
         # Trim off barcodes from each read using the barcode length after accounting for the
-        # restriction site (TGCA) within the barcode
+        # restriction site within the barcode
         my $clip = $index;
-## TODO # Likely have to request RE site from user to clip from indices
-        $clip =~ s/TGCA$//;
+        $clip =~ s/$RE_site$//i;
+        die "The value of \$clip is $clip\n";
         my $len = length($clip);
         open CLIPPED, ">$index\_$sample\_R1-clip.fastq" or die "ERROR: Could not create $index\_$sample\_R1-clip\n";
         select(CLIPPED);
