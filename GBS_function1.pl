@@ -9,11 +9,11 @@
 #####   R1_file : A FASTQ file (zipped or unzipped) containing raw Read 1 reads
 #####   R2_file : A FASTQ file (zipped or unzipped) containing raw Read 2 reads
 ##### Output:
-#####   $index_sample_R1.fastq for R1 reads beginning with barcode $index
-#####   $index_sample_R2.fastq for R2 reads which pair with filtered R1 reads
-#####   /tmp/$index_sample_R1.tmp for filtered R1 reads starting with $index (not yet in FASTQ format)
-#####   /tmp/$index_sample_R1-clip.fastq for R1 reads trimmed of barcode $index
-#####   /tmp/$index.list A list of R1 FASTQ headers starting with $index
+#####   /demultiplex/$index_sample_R1.fastq for R1 reads beginning with barcode $index
+#####   /demultiplex/$index_sample_R2.fastq for R2 reads which pair with filtered R1 reads
+#####   /demultiplex/$index_sample_R1-clip.fastq for R1 reads trimmed of barcode $index
+#####   /demultiplex/unindexed_sample_R1.fastq for unindexed R1 reads
+#####   /demultiplex/unindexed_sample_R2.fastq for unindexed R2 reads
 
 use strict;
 use warnings;
@@ -56,6 +56,8 @@ sub function1
     my $num_indices = $#indices + 1;
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
 
+    # Create a directory for demultiplexed files
+    system("mkdir -p demultiplex/");
     # Create a directory for files that will only be kept temporarily
     system("mkdir -p tmp/");
 
@@ -93,39 +95,40 @@ sub function1
 
         ## b.
         # Remove the "--" separator between each read in each temp file and save as a FASTQ file
-        system("grep -v ^- tmp/$index\_$sample\_R1.tmp > $index\_$sample\_R1.fastq");
+        system("grep -v ^- tmp/$index\_$sample\_R1.tmp > demultiplex/$index\_$sample\_R1.fastq");
 
         ## c.
         # Trim off barcodes from each read using the barcode length after accounting for the
         # restriction site within the barcode
         my $clip = $index;
         $clip =~ s/$RE_site$//i;
-        die "The value of \$clip is $clip\n";
         my $len = length($clip);
-        open CLIPPED, ">$index\_$sample\_R1-clip.fastq" or die "ERROR: Could not create $index\_$sample\_R1-clip\n";
+        open CLIPPED, ">demultiplex/$index\_$sample\_R1-clip.fastq"
+            or die "ERROR: Could not create demultiplex/$index\_$sample\_R1-clip\n";
         select(CLIPPED);
-        fix_r1("$index\_$sample\_R1.fastq", $len);
+        fix_r1("demultiplex/$index\_$sample\_R1.fastq", $len);
         #CLIPPED->flush();
         select(STDOUT);
-        close CLIPPED or die "ERROR: Could not close $index\_$sample\_R1-clip\n";
+        close CLIPPED or die "ERROR: Could not close demultiplex/$index\_$sample\_R1-clip.fastq\n";
 
         ## d.
         # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
         open HEADERS, ">tmp/$index\_$sample.list" or die "ERROR: Could not create tmp/$index\_$sample.list\n";
         select(HEADERS);
-        get_id("$index\_$sample\_R1-clip.fastq");
+        get_id("demultiplex/$index\_$sample\_R1-clip.fastq");
         #HEADERS->flush();
         select(STDOUT);
         close HEADERS or die "ERROR: Could not close tmp/$index.list\n";
 
         ## e.
         # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
-        open R2_READS, ">$index\_$sample\_R2.fastq" or die "ERROR: Could not create $index\_$sample\_R2.fastq";
+        open R2_READS, ">demultiplex/$index\_$sample\_R2.fastq"
+            or die "ERROR: Could not create demultiplex/$index\_$sample\_R2.fastq\n";
         select(R2_READS);
         $R2_count = get_r2($R2_file, "tmp/$index\_$sample.list");
         #R2_READS->flush();
         select(STDOUT);
-        close R2_READS or die "ERROR: Could not close $index\_$sample\_R2.fastq\n";
+        close R2_READS or die "ERROR: Could not close demultiplex/$index\_$sample\_R2.fastq\n";
 
         # Summary of progress
         $count++;
@@ -135,7 +138,7 @@ sub function1
 
     # Search for reads that are missing a barcode
     # Create a master file containing headers of R1 reads with found indices
-    print "Placing reads without an barcode into a separate file... \n";
+    print "Placing reads without a barcode into a separate file... \n";
     my $indexed_list = "tmp/indexed\_$sample\_R1.list";
     my $concat_cmd = "cat tmp/*\_$sample.list > $indexed_list";
     ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
@@ -144,7 +147,7 @@ sub function1
     {
         foreach my $read_pair ('R1', 'R2')
         {
-            my $unindexed = "unindexed\_$sample\_$read_pair.fastq";
+            my $unindexed = "demultiplex/unindexed\_$sample\_$read_pair.fastq";
             my $read_file;
             if ($read_pair eq 'R1')
             {
@@ -157,7 +160,7 @@ sub function1
             select(NO_INDEX);
             $R2_count = get_unindexed($read_file, $indexed_list, $read_pair);
             select(STDOUT);
-            close NO_INDEX or die "ERROR: Could not close $unindexed\_$sample\_$read_pair.fastq.\n";
+            close NO_INDEX or die "ERROR: Could not close $unindexed\n";
             print "$read_pair reads without an index placed in $unindexed\n";
         }
         summarize_demultiplex("unindexed", $sample, $R2_count, $R1_raw_count, $R2_raw_count);
@@ -167,6 +170,7 @@ sub function1
         print "ERROR: Could not concatenate R1 header files into one file:\n";
         die "$error_message\n@$stderr_buf\n";
     }
+    system("rm -r tmp/");
 }
 
 #################################

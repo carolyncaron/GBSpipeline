@@ -36,13 +36,15 @@ It is recommended that the GBS_Pipeline files be placed in a new directory creat
 specifically for the GBS analysis to be performed. Running all steps of the pipeline will
 create the following directories:
 
-F<trim/ align/ variants/>
+F<demultiplex/ trim/ align/ variants/>
+
+where outputs from each step are placed (with the exception of summary files).
 
 =head2 FUNCTIONS
 
 =over 6
 
-=item B<function1> sample_name re_site F<barcode_file read1_file read2_file>
+=item B<demultiplex> sample_name re_site F<barcode_file read1_file read2_file>
 
 Demultiplex reads based on a barcode file (provided by Illumina to distinguish samples
 used in sequencing).
@@ -54,7 +56,7 @@ re_site is the rare-cutter restriction enzyme site used in the GBS protocol
 
 read1_file and read2_file should be provided in FASTQ format version Illumina 1.8+
 
-=item B<function2> F<trimmomatic_path trim_file> [options]
+=item B<trim_reads> F<trimmomatic_path trim_file> [options]
 
 Trim low quality bases and remove Illumina adaptors from raw FASTQ reads using a
 command-line tool called Trimmomatic (Bolger, A. M., Lohse, M., & Usadel, B. (2014).
@@ -85,7 +87,7 @@ Options:
     -minlen [36]
     -version [0.32]
 
-=item B<function3> F<bowtie2_dir reference_genome> [-- options]
+=item B<align_reads> F<bowtie2_dir reference_genome> [-- options]
 
 Aligns FASTQ reads to a reference genome using a command-line tool called bowtie2 (Langmead B,
 Salzberg S. Fast gapped-read alignment with Bowtie 2. Nature Methods. 2012, 9:357-359.)
@@ -149,7 +151,7 @@ Finally, one parameter is unique to this function:
             the reference genome. Use this option BEFORE listing
             bowtie2 custom options (ie. prior to the '--')
 
-=item B<function4> F<samtools_dir>
+=item B<SNP_calling> F<samtools_dir>
 
 Bowtie2 outputs alignments in SAM file format, which is a generic format for storing sequence
 alignments against a reference genome. This SAM file can be sorted, indexed, compressed, and more
@@ -326,12 +328,12 @@ if ( exists ( $ARGV[0] ) )
 
             require "$Bin/GBS_function1.pl";
             function1($sample, $index_file, $RE_site, $R1_file, $R2_file);
+            print "Completed $FUNCTION.\n";
 
             # Save the sample and index file into the configuration file
             add_to_config("SAMPLE", $sample, "The generic sample name used in naming files during processing");
             add_to_config("INDEX_FILE", $index_file, "The filename of the list of indices (aka barcodes) provided by Illumina");
 
-            print "Completed $FUNCTION.\n";
             #summarize($FUNCTION, $start);
         }
         when ( /function2/ || /f2/ || /trim_reads/ )

@@ -68,7 +68,7 @@ sub f3
         unless ( -s "$bowtie2_dir/bowtie2-build")
         {   die "ERROR: Could not locate bowtie2-build in $bowtie2_dir\n";   }
 
-        print "Creating reference index files... \n";
+        print "Creating reference index files. Please wait... \n";
         my $cmd = "$bowtie2_dir/bowtie2-build $reference_genome $reference_basename";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
@@ -129,7 +129,7 @@ sub f3
             $cmd .= "-k $max_valid_alignments -X $max_fragment_length -R $max_reseed_rate -p $num_threads ";
             $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S align/$index\_$sample.sam";
         }
-
+        print "Aligning samples with index $index. Please wait...\n";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         if ($success)
