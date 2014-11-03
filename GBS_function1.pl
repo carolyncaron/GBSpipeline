@@ -8,12 +8,13 @@
 #####   RE_site: A short nucleotide string representing the rare-cutter restriction site used in extracting the reads
 #####   R1_file : A FASTQ file (zipped or unzipped) containing raw Read 1 reads
 #####   R2_file : A FASTQ file (zipped or unzipped) containing raw Read 2 reads
+#####   output_dir : A directory in which processed reads will be placed
 ##### Output:
-#####   /demultiplex/$index_sample_R1.fastq for R1 reads beginning with barcode $index
-#####   /demultiplex/$index_sample_R2.fastq for R2 reads which pair with filtered R1 reads
-#####   /demultiplex/$index_sample_R1-clip.fastq for R1 reads trimmed of barcode $index
-#####   /demultiplex/unindexed_sample_R1.fastq for unindexed R1 reads
-#####   /demultiplex/unindexed_sample_R2.fastq for unindexed R2 reads
+#####   $output_dir/demultiplex/$index_sample_R1.fastq for R1 reads beginning with barcode $index
+#####   $output_dir/demultiplex/$index_sample_R2.fastq for R2 reads which pair with filtered R1 reads
+#####   $output_dir/demultiplex/$index_sample_R1-clip.fastq for R1 reads trimmed of barcode $index
+#####   $output_dir/demultiplex/unindexed_sample_R1.fastq for unindexed R1 reads
+#####   $output_dir/demultiplex/unindexed_sample_R2.fastq for unindexed R2 reads
 
 use strict;
 use warnings;
@@ -33,6 +34,18 @@ sub function1
     my $R2_file = $_[4];
     unless ( -f $R1_file && -r $R1_file && -f $R2_file && -r $R2_file )
     {   die "ERROR: Files $R1_file and/or $R2_file do not exist or are unreadable.\n";  }
+
+    # Determine in which directory to place processed reads
+    my $output_dir = $_[5];
+    unless ( -d $output_dir )
+    {
+        print "No directory $output_dir exists. Create it? (yes/no) ";
+        chomp (my $usr_input = <STDIN>);
+        if ($usr_input =~ /yes/i) { system("mkdir -p $output_dir"); }
+        else {
+            die "Exiting. Please create a directory for processed reads or use ./ for the current directory.\n";
+        }
+    }
 
     # Check the files containing reads that they are in FASTQ format, version Illumina 1.8+
     foreach my $R_file ($R1_file, $R2_file)
@@ -57,9 +70,9 @@ sub function1
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
 
     # Create a directory for demultiplexed files
-    system("mkdir -p demultiplex/");
+    system("mkdir -p $output_dir/demultiplex/");
     # Create a directory for files that will only be kept temporarily
-    system("mkdir -p tmp/");
+    system("mkdir -p $output_dir/tmp/");
 
     # Keep counts on the curent index, R2 reads for an index, and the total raw read pair counts
     my ( $count, $R2_count, $R1_raw_count, $R2_raw_count ) = 0;
@@ -78,7 +91,8 @@ sub function1
     }
 
     # Create summary file
-    my $summary_file = "$sample\_demultiplex\_summary.txt";
+    system("mkdir -p summary_files/");
+    my $summary_file = "summary_files/$sample\_demultiplex\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
     print SUMMARY "Barcode\tRead1 count\t%of Raw Read1\tRead2 count\t% of Raw Read2\n";
     close SUMMARY or die "Unable to close $summary_file\n";
@@ -91,11 +105,11 @@ sub function1
         ## a.
         # Search R1 reads for each barcode at the start of the sequence,
         # save to a temp file (-A 2 -B 1 options: include 2 lines after, 1 line before match)
-        system("zgrep -A 2 -B 1 ^$index $R1_file > tmp/$index\_$sample\_R1.tmp");
+        system("zgrep -A 2 -B 1 ^$index $R1_file > $output_dir/tmp/$index\_$sample\_R1.tmp");
 
         ## b.
         # Remove the "--" separator between each read in each temp file and save as a FASTQ file
-        system("grep -v ^- tmp/$index\_$sample\_R1.tmp > demultiplex/$index\_$sample\_R1.fastq");
+        system("grep -v ^- $output_dir/tmp/$index\_$sample\_R1.tmp > $output_dir/demultiplex/$index\_$sample\_R1.fastq");
 
         ## c.
         # Trim off barcodes from each read using the barcode length after accounting for the
@@ -103,51 +117,51 @@ sub function1
         my $clip = $index;
         $clip =~ s/$RE_site$//i;
         my $len = length($clip);
-        open CLIPPED, ">demultiplex/$index\_$sample\_R1-clip.fastq"
-            or die "ERROR: Could not create demultiplex/$index\_$sample\_R1-clip\n";
+        open CLIPPED, ">$output_dir/demultiplex/$index\_$sample\_R1-clip.fastq"
+            or die "ERROR: Could not create $output_dir/demultiplex/$index\_$sample\_R1-clip\n";
         select(CLIPPED);
-        fix_r1("demultiplex/$index\_$sample\_R1.fastq", $len);
+        fix_r1("$output_dir/demultiplex/$index\_$sample\_R1.fastq", $len);
         #CLIPPED->flush();
         select(STDOUT);
-        close CLIPPED or die "ERROR: Could not close demultiplex/$index\_$sample\_R1-clip.fastq\n";
+        close CLIPPED or die "ERROR: Could not close $output_dir/demultiplex/$index\_$sample\_R1-clip.fastq\n";
 
         ## d.
         # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
-        open HEADERS, ">tmp/$index\_$sample.list" or die "ERROR: Could not create tmp/$index\_$sample.list\n";
+        open HEADERS, ">$output_dir/tmp/$index\_$sample.list" or die "ERROR: Could not create $output_dir/tmp/$index\_$sample.list\n";
         select(HEADERS);
-        get_id("demultiplex/$index\_$sample\_R1-clip.fastq");
+        get_id("$output_dir/demultiplex/$index\_$sample\_R1-clip.fastq");
         #HEADERS->flush();
         select(STDOUT);
-        close HEADERS or die "ERROR: Could not close tmp/$index.list\n";
+        close HEADERS or die "ERROR: Could not close $output_dir/tmp/$index.list\n";
 
         ## e.
         # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
-        open R2_READS, ">demultiplex/$index\_$sample\_R2.fastq"
-            or die "ERROR: Could not create demultiplex/$index\_$sample\_R2.fastq\n";
+        open R2_READS, ">$output_dir/demultiplex/$index\_$sample\_R2.fastq"
+            or die "ERROR: Could not create $output_dir/demultiplex/$index\_$sample\_R2.fastq\n";
         select(R2_READS);
-        $R2_count = get_r2($R2_file, "tmp/$index\_$sample.list");
+        $R2_count = get_r2($R2_file, "$output_dir/tmp/$index\_$sample.list");
         #R2_READS->flush();
         select(STDOUT);
-        close R2_READS or die "ERROR: Could not close demultiplex/$index\_$sample\_R2.fastq\n";
+        close R2_READS or die "ERROR: Could not close $output_dir/demultiplex/$index\_$sample\_R2.fastq\n";
 
         # Summary of progress
         $count++;
         print "Demultiplexed barcode $index [$count/$num_indices]\n";
-        summarize_demultiplex($index, $sample, $R2_count, $R1_raw_count, $R2_raw_count);
+        summarize_demultiplex($index, $sample, $output_dir, $R2_count, $R1_raw_count, $R2_raw_count);
     }
 
     # Search for reads that are missing a barcode
     # Create a master file containing headers of R1 reads with found indices
     print "Placing reads without a barcode into a separate file... \n";
-    my $indexed_list = "tmp/indexed\_$sample\_R1.list";
-    my $concat_cmd = "cat tmp/*\_$sample.list > $indexed_list";
+    my $indexed_list = "$output_dir/tmp/indexed\_$sample\_R1.list";
+    my $concat_cmd = "cat $output_dir/tmp/*\_$sample.list > $indexed_list";
     ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $concat_cmd, verbose => 0 );
     if ($success)
     {
         foreach my $read_pair ('R1', 'R2')
         {
-            my $unindexed = "demultiplex/unindexed\_$sample\_$read_pair.fastq";
+            my $unindexed = "$output_dir/demultiplex/unindexed\_$sample\_$read_pair.fastq";
             my $read_file;
             if ($read_pair eq 'R1')
             {
@@ -163,7 +177,7 @@ sub function1
             close NO_INDEX or die "ERROR: Could not close $unindexed\n";
             print "$read_pair reads without an index placed in $unindexed\n";
         }
-        summarize_demultiplex("unindexed", $sample, $R2_count, $R1_raw_count, $R2_raw_count);
+        summarize_demultiplex("unindexed", $sample, $output_dir, $R2_count, $R1_raw_count, $R2_raw_count);
     }
     else
     {
@@ -181,22 +195,23 @@ sub summarize_demultiplex
 {
     my $index = $_[0];
     my $sample = $_[1];
-    my $R2_count = $_[2];
-    my $R1_raw_count = $_[3];
-    my $R2_raw_count = $_[4];
+    my $output_dir = $_[2];
+    my $R2_count = $_[3];
+    my $R1_raw_count = $_[4];
+    my $R2_raw_count = $_[5];
 
-    my $summary_file = "$sample\_demultiplex\_summary.txt";
+    my $summary_file = "summary_files/$sample\_demultiplex\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
 
     my $R1_count = 0;
     my $R1_demultiplexed;
     if ($index eq 'unindexed')
     {
-        $R1_demultiplexed = "tmp/indexed\_$sample\_R1.list";
+        $R1_demultiplexed = "$output_dir/tmp/indexed\_$sample\_R1.list";
     }
     else
     {
-        $R1_demultiplexed = "tmp/$index\_$sample.list";
+        $R1_demultiplexed = "$output_dir/tmp/$index\_$sample.list";
     }
     my $wc_cmd = "wc -l $R1_demultiplexed";
     my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =

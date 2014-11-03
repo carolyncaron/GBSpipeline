@@ -6,8 +6,8 @@
 #####   bowtie2_dir - location of bowtie2 installation
 #####   reference_genome - the pathname of the reference genome sequence
 ##### Output:
-#####   align/$index_$sample.sam
-#####   align/$index_$sample_align.log
+#####   $output_dir/align/$index_$sample.sam
+#####   $output_dir/align/$index_$sample_align.log
 #####   *If not already present, reference genome index files*
 
 use strict;
@@ -29,12 +29,14 @@ sub f3
     my $reference_genome = $_[1];
     my $sample = $_[2];
     my $index_file = $_[3];
+    my $output_dir = $_[4];
 
+    # Save parameters if provided for bowtie2
     my @bowtie2_options;
     my $num_options = $#_ + 1;
-    if ($num_options > 4)
+    if ($num_options > 5)
     {
-        @bowtie2_options = @{$_[4]};
+        @bowtie2_options = @{$_[5]};
     }
 
     # Ensure index_file exists in the cwd
@@ -49,7 +51,8 @@ sub f3
     unless (-f $reference_genome && -r $reference_genome)
     {   die "ERROR: $reference_genome does not exist or is unreadable.\n";  }
 
-    system("mkdir -p align/");
+    system("mkdir -p $output_dir/align/");
+    system("mkdir -p logs/");
 
     # Remove file extension to get the basename
     my $reference_basename = $reference_genome;
@@ -97,7 +100,8 @@ sub f3
     }
 
     # Create summary file
-    my $summary_file = "$sample\_align\_summary.txt";
+    system("mkdir -p summary_files/");
+    my $summary_file = "summary_files/$sample\_align\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not open $summary_file\n";
     print SUMMARY "Index\tInput Reads\tReads Paired\t% Reads Paired\tOverall Alignment Rate\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
@@ -107,8 +111,8 @@ sub f3
     {
         chomp($index);
 
-        my $R1_trimmed = "trim/$index\_$sample\_R1-p.fastq";
-        my $R2_trimmed = "trim/$index\_$sample\_R2-p.fastq";
+        my $R1_trimmed = "$output_dir/trim/$index\_$sample\_R1-p.fastq";
+        my $R2_trimmed = "$output_dir/trim/$index\_$sample\_R2-p.fastq";
 
         unless ( -f $R1_trimmed && -r $R1_trimmed )
         {   die "ERROR: $R1_trimmed does not exist or is unreadable.\n"; }
@@ -122,13 +126,14 @@ sub f3
         if(@bowtie2_options)    # Run with custom paramaters
         {
             $cmd = "$bowtie2_dir/bowtie2 --no-sq --no-head @bowtie2_options ";
-            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S align/$index\_$sample.sam";
+            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$index\_$sample.sam";
         } else                  # Run with default parameters
         {
             $cmd = "$bowtie2_dir/bowtie2 --end-to-end --no-mixed --no-discordant --no-sq --no-head ";
             $cmd .= "-k $max_valid_alignments -X $max_fragment_length -R $max_reseed_rate -p $num_threads ";
-            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S align/$index\_$sample.sam";
+            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$index\_$sample.sam";
         }
+
         print "Aligning samples with index $index. Please wait...\n";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
@@ -136,7 +141,7 @@ sub f3
         {
             print "Completed alignments for index $index\n";
             # Create a log documenting alignment stats
-            my $alignlog = "align/$index\_$sample\_align.log";
+            my $alignlog = "logs/$index\_$sample\_bowtie2_output.log";
             open ALIGNLOG, ">$alignlog" or die "ERROR: Unable to create log file $alignlog\n";
             print ALIGNLOG join " ", @$full_buf;
             close ALIGNLOG or die "ERROR: Unable to close log file $alignlog\n";
@@ -168,7 +173,8 @@ sub summarize_align
     $sample_summary =~ s/\n/ /g;
     my @align_info = split(/ /, $sample_summary);
 
-    # Save values of interest into variables
+    ## TODO ##
+    # Save values of interest into variables - this isn't always consistent. Extraneous whitespace by bowtie?
     my $input_reads = $align_info[0];
     my $paired_reads = $align_info[4];
     my $percent_paired = $align_info[5];
@@ -177,7 +183,7 @@ sub summarize_align
     #print "Input reads: $input_reads\nPaired reads: $paired_reads\nPercent paired: $percent_paired\nOverall: $overall_alignment_percent\n";
     #print join " | ", @align_info;
 
-    my $summary_file = "$sample\_align\_summary.txt";
+    my $summary_file = "summary_files/$sample\_align\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
     print SUMMARY "$index\t$input_reads\t$paired_reads\t$percent_paired\t$overall_alignment_percent\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";

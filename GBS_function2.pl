@@ -6,11 +6,11 @@
 #####   trimmomatic_path : The full pathname to the trimmomatic jar file
 #####   trim_file : A list of sequences to filter out the reads (ie. Illumina adaptors)
 ##### Output:
-#####   trim/$index_$sample_R1-s.fastq
-#####   trim/$index_$sample_R1-p.fastq
-#####   trim/$index_$sample_R2-s.fastq
-#####   trim/$index_$sample_R2-p.fastq
-#####   trim/$index_$sample_output.log
+#####   $output_dir/trim/$index_$sample_R1-s.fastq
+#####   $output_dir/trim/$index_$sample_R1-p.fastq
+#####   $output_dir/trim/$index_$sample_R2-s.fastq
+#####   $output_dir/trim/$index_$sample_R2-p.fastq
+#####   $output_dir/trim/$index_$sample_output.log
 
 use strict;
 use warnings;
@@ -42,6 +42,7 @@ sub f2
     my $trim_file = $_[1];
     my $sample = $_[2];
     my $index_file = $_[3];
+    my $output_dir = $_[4];
 
     # Ensure index_file exists in the cwd
     unless ( -f $index_file && -r $index_file )
@@ -74,10 +75,12 @@ sub f2
     unless ( -r "$trim_file" && -f "$trim_file" )
     {   die "ERROR: $trim_file does not exist or is not readable.\n";   }
 
-    system("mkdir -p trim/");
+    system("mkdir -p $output_dir/trim/");
+    system("mkdir -p logs/");
 
     # Create summary file
-    my $summary_file = "$sample\_trim\_summary.txt";
+    system("mkdir -p summary_files/");
+    my $summary_file = "summary_files/$sample\_trim\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
     print SUMMARY "Barcode\tInput Read Pairs\tSurviving Read Pairs\t% Both Surviving\t",
         "Only Forward Surviving\t% Forward Surviving\tOnly Reverse Surviving\t% Reverse Surviving\t",
@@ -88,10 +91,12 @@ sub f2
     my @indices = `cat $index_file`;
     foreach my $index (@indices)
     {
+        ## TODO: Include print statements to mark the progress
+
         chomp($index);
 
-        my $R1_reads = "$index\_$sample\_R1-clip.fastq";
-        my $R2_reads = "$index\_$sample\_R2.fastq";
+        my $R1_reads = "$output_dir/demultiplex/$index\_$sample\_R1-clip.fastq";
+        my $R2_reads = "$output_dir/demultiplex/$index\_$sample\_R2.fastq";
 
         unless ( -f "$R1_reads" && -r "$R1_reads" )
         {   die "ERROR: $R1_reads does not exist or is unreadable.\n"; }
@@ -103,8 +108,8 @@ sub f2
         $cmd .= "-phred33 ";
         $cmd .= "-trimlog trim/$index.trim.log ";
         $cmd .= "$R1_reads $R2_reads ";
-        $cmd .= "trim/$index\_$sample\_R1-p.fastq trim/$index\_$sample\_R1-s.fastq ";
-        $cmd .= "trim/$index\_$sample\_R2-p.fastq trim/$index\_$sample\_R2-s.fastq ";
+        $cmd .= "$output_dir/trim/$index\_$sample\_R1-p.fastq $output_dir/trim/$index\_$sample\_R1-s.fastq ";
+        $cmd .= "$output_dir/trim/$index\_$sample\_R2-p.fastq $output_dir/trim/$index\_$sample\_R2-s.fastq ";
         $cmd .= "ILLUMINACLIP:$trim_file:$seed_mismatches:";
         $cmd .= "$palindrome_clip_threshold:$simple_clip_threshold ";
         $cmd .= "LEADING:$leading ";
@@ -117,7 +122,7 @@ sub f2
         if ($success)
         {
             print "Trimmomatic successfully finished trimming $index indexed reads.\n";
-            my $trimlog = "trim/$index\_trimmomatic\_output.log";
+            my $trimlog = "logs/$index\_$sample\_trimmomatic\_output.log";
             open TRIMLOG, ">$trimlog";
             print TRIMLOG join " ", @$full_buf;
         } else
@@ -126,7 +131,7 @@ sub f2
             die "$error_message\n@$stderr_buf\n";
         }
 
-        summarize_trim($index, $sample, \@$stderr_buf);
+        summarize_trim($index, $sample, $output_dir, \@$stderr_buf);
     }
 }
 
@@ -139,9 +144,10 @@ sub summarize_trim
 {
     my $index = $_[0];
     my $sample = $_[1];
-    my @trimmomatic_output = @{$_[2]};
+    my $output_dir = $_[2];
+    my @trimmomatic_output = @{$_[3]};
 
-    my $summary_file = "$sample\_trim\_summary.txt";
+    my $summary_file = "summary_files/$sample\_trim\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
 
     # Grep for the line containing stats about the trimming process

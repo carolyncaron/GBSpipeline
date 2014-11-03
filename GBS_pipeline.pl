@@ -309,11 +309,11 @@ if ( exists ( $ARGV[0] ) )
     {
         when ( /function1/ || /f1/ || /demultiplex/ )
         {
-            unless ($num_args == 5)
+            unless ($num_args == 6)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
-                die "--Try: Perl GBS_pipeline.pl function1 sample_name index_file re_site",
-                    "/path/to/file1/filename1.fastq /path/to/file2/filename2.fastq\n";
+                die "--Try: Perl GBS_pipeline.pl $FUNCTION sample_name index_file re_site ",
+                    "/path/to/file1/filename1.fastq /path/to/file2/filename2.fastq /path/to/reads/\n";
             }
 
             my $sample = $args[0];
@@ -321,18 +321,20 @@ if ( exists ( $ARGV[0] ) )
             my $RE_site = $args[2];
             my $R1_file = $args[3];
             my $R2_file = $args[4];
+            my $output_dir = $args[5];
 
             #my $start = Time::HiRes::gettimeofday();
 
             print "Calling $FUNCTION ...\n";
 
             require "$Bin/GBS_function1.pl";
-            function1($sample, $index_file, $RE_site, $R1_file, $R2_file);
+            function1($sample, $index_file, $RE_site, $R1_file, $R2_file, $output_dir);
             print "Completed $FUNCTION.\n";
 
             # Save the sample and index file into the configuration file
             add_to_config("SAMPLE", $sample, "The generic sample name used in naming files during processing");
             add_to_config("INDEX_FILE", $index_file, "The filename of the list of indices (aka barcodes) provided by Illumina");
+            add_to_config("READS_DIR", $output_dir, "The location where output of processed reads are placed");
 
             #summarize($FUNCTION, $start);
         }
@@ -341,23 +343,23 @@ if ( exists ( $ARGV[0] ) )
             unless ($num_args == 2)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
-                die "--Try: ./GBS_pipeline.pl function2 /path/to/trimmomatic path/to/trim_file.fasta\n";
+                die "--Try: ./GBS_pipeline.pl $FUNCTION /path/to/trimmomatic path/to/trim_file.fasta\n";
             }
 
             my $trimmomatic_path = $args[0];
             my $trim_file = $args[1];
 
-            # Extract sample name and indices from the config file
+            # Extract sample name, indices and output directory from the config file
             chomp(my $sample = `grep 'SAMPLE' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $index_file = `grep 'INDEX_FILE' $CONFIG_FILE | cut -d'=' -f2`);
+            chomp(my $output_dir = `grep 'READS_DIR' $CONFIG_FILE | cut -d'=' -f2`);
 
             ######## TODO #########
             # Save any options provided into an array
 
-
             print "Calling $FUNCTION ...\n";
             require "$Bin/GBS_function2.pl";
-            f2($trimmomatic_path, $trim_file, $sample, $index_file);
+            f2($trimmomatic_path, $trim_file, $sample, $index_file, $output_dir);
             print "Completed $FUNCTION.\n";
         }
         when ( /function3/ || /f3/ || /align_reads/ )
@@ -365,7 +367,7 @@ if ( exists ( $ARGV[0] ) )
             unless ($num_args >= 2)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
-                die "--Try: ./GBS_pipeline.pl function3 /path/to/bowtie2_dir/ path/to/reference_genome.FASTA\n";
+                die "--Try: ./GBS_pipeline.pl $FUNCTION /path/to/bowtie2_dir/ path/to/reference_genome.FASTA\n";
             }
 
             my $bowtie2_dir = $args[0];
@@ -377,33 +379,37 @@ if ( exists ( $ARGV[0] ) )
             # Extract sample name and indices from the config file
             chomp(my $sample = `grep 'SAMPLE' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $index_file = `grep 'INDEX_FILE' $CONFIG_FILE | cut -d'=' -f2`);
+            chomp(my $output_dir = `grep 'READS_DIR' $CONFIG_FILE | cut -d'=' -f2`);
 
             print "Calling $FUNCTION ...\n";
             require "$Bin/GBS_function3.pl";
 
             # Give the subroutine the remaining args (for bowtie2) as an array reference
-            f3($bowtie2_dir, $reference_genome, $sample, $index_file, \@args);
+            f3($bowtie2_dir, $reference_genome, $sample, $index_file, $output_dir, \@args);
             print "Completed $FUNCTION.\n";
 
             add_to_config("REFERENCE",$reference_genome,"The pathname of the reference genome sequence.");
         }
         when ( /function4/ || /f4/ || /SNP_calling/ )
         {
-            my $samtools_dir = $args[0];
-            unless ($num_args == 1)
+            unless ($num_args == 2)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
-                die "--Try: ./GBS_pipeline.pl function4 /path/to/SAMtools_dir/\n";
+                die "--Try: ./GBS_pipeline.pl $FUNCTION /path/to/SAMtools_dir/ /path/to/bcftools_dir/\n";
             }
+
+            my $samtools_dir = $args[0];
+            my $bcftools_dir = $args[1];
 
             # Extract sample name/indices/reference genome from the config file
             chomp(my $sample = `grep 'SAMPLE' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $index_file = `grep 'INDEX_FILE' $CONFIG_FILE | cut -d'=' -f2`);
+            chomp(my $output_dir = `grep 'READS_DIR' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $reference_genome = `grep 'REFERENCE' $CONFIG_FILE | cut -d'=' -f2`);
 
             print "Calling $FUNCTION ...\n";
             require "$Bin/GBS_function4.pl";
-            f4($samtools_dir, $sample, $index_file, $reference_genome);
+            f4($samtools_dir, $bcftools_dir, $sample, $index_file, $output_dir, $reference_genome);
             print "Completed $FUNCTION.\n";
         }
         default
