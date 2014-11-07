@@ -3,7 +3,7 @@
 ##### GBS_Pipeline.pl - a multi-step pipeline for GBS analysis #####
 ##### Usage: ./GBS_Pipeline.pl [function] [arg1] [arg2] ...
 ##### Functions:
-#####   function1 sample_name barcode_file re_site read1_file read2_file
+#####   function1 sample_name barcode_file re_site read1_file read2_file output_dir
 #####   function2 trimmomatic_path trim_file
 #####   function3 bowtie2_dir reference_genome [-- options]
 #####   function4 samtools_dir
@@ -44,7 +44,7 @@ where outputs from each step are placed (with the exception of summary files).
 
 =over 6
 
-=item B<demultiplex> sample_name re_site F<barcode_file read1_file read2_file>
+=item B<demultiplex> sample_name F<barcode_file> re_site F<read1_file read2_file>
 
 Demultiplex reads based on a barcode file (provided by Illumina to distinguish samples
 used in sequencing).
@@ -55,6 +55,11 @@ Avoid use of whitespace (Ex: lens culinaris => lens_culinaris)
 re_site is the rare-cutter restriction enzyme site used in the GBS protocol
 
 read1_file and read2_file should be provided in FASTQ format version Illumina 1.8+
+
+output_dir is a user-specified directory for placement of processed reads. This can be
+beneficial when running analysis on a machine or server where space is limited, since
+very large files can be directed to a separate storage unit or location. The user can
+specify . when wanting to use the current working directory.
 
 =item B<trim_reads> F<trimmomatic_path trim_file> [options]
 
@@ -448,3 +453,36 @@ sub summarize
         "by typing: Perl ./GBS_pipeline.pl $function [arg1] [arg2] ... \n";
 }
 
+##################################
+##### Progress reporting
+##################################
+# Input: A current count of the number of indices processed, the total number of indices
+sub print_progress
+{
+    my $index_count = $_[0];
+    my $num_indices = $_[1];
+    my $message = $_[2];
+    # Check if a message was given, otherwise give it the empty string
+    unless ( length $message ) { $message = ""; }
+    # Calculate percentage of reads indexed
+    my $percent_complete = ($index_count/$num_indices)*100;
+    my $steps;
+    # Remove decimal places for simplicity
+    $percent_complete = int $percent_complete;
+
+    print " [";
+    # Determine the length of the bar
+    for ($steps=0; $steps<$percent_complete; $steps=$steps+5)
+    {
+        print "=";
+    }
+    # Determine the space remaining after the bar
+    my $steps_remaining = (100 - $steps);
+    for (my $i = 0; $i < $steps_remaining; $i = $i+5)
+    {
+        print " ";
+    }
+    # Output percentage then shift cursor to beginning of the line
+    print "] $percent_complete %  $message\r";
+    sleep 1;
+}

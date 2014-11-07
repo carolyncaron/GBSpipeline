@@ -41,8 +41,16 @@ sub f4
     system("mkdir -p $output_dir/variants/");
 
     my @indices = `cat $index_file`;
+    my $num_indices = $#indices + 1;
+    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+    my $index_count = 0;
+    print_progress($index_count, $num_indices);
+
+    # BEGIN SNP calling
     foreach my $index (@indices)
     {
+        # Seven steps per index... break it down so progress bar reports more often
+        my $num_steps = $index_count*7;
         chomp($index);
         my $sam_file = "$output_dir/align/$index\_$sample.sam";
 
@@ -53,6 +61,8 @@ sub f4
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Could not filter $sam_file for unmapped reads:\n$error_message\n@$stderr_buf";   }
+        $num_steps++;
+        print_progress($num_steps, $num_indices*7, " Filtering SAM          ");
 
         # 4b. Sort sam files so they can be indexed when converted to BAM
         $cmd = "sort -k3,3 -k4,4n $output_dir/align/$index\_$sample\_mapped.sam > ";
@@ -60,6 +70,8 @@ sub f4
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Could not sort $index\_$sample\_mapped.sam: $error_message\n@$stderr_buf";   }
+        $num_steps++;
+        print_progress($num_steps, $num_indices*7, " Sorting SAM  ");
 
         # 4c. Convert to BAM format (Creates .fai files from the reference genome then BAM)
         $cmd = "$samtools_dir/samtools view -bT $reference_genome $output_dir/align/$index\_$sample\_mapped.sorted.sam ";
@@ -67,38 +79,53 @@ sub f4
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to convert $index\_$sample\_mapped.sorted.sam to BAM format: $error_message\n@$stderr_buf";   }
+        $num_steps++;
+        print_progress($num_steps, $num_indices*7, " Converting to BAM");
 
-        print "Index $index files converted from .sam to .bam\n";
+        #print "Index $index files converted from .sam to .bam\n";
 
-        # 4c. Sort BAM
+        # 4d. Sort BAM
         $cmd = "$samtools_dir/samtools sort $output_dir/align/$index\_$sample\_mapped.bam ";
         $cmd .= "$output_dir/align/$index\_$sample\_mapped.sorted";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to sort $index\_$sample\_mapped.bam: $error_message\n@$stderr_buf";   }
+        $num_steps++;
+        print_progress($num_steps, $num_indices*7, " Sorting BAM      ");
 
-        # 4d. Index BAM
+        # 4e. Index BAM
         $cmd = "$samtools_dir/samtools index $output_dir/align/$index\_$sample\_mapped.sorted.bam";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to index $index\_$sample\_mapped.sorted.bam: $error_message\n@$stderr_buf";   }
+        $num_steps++;
+        print_progress($num_steps, $num_indices*7, "Indexing BAM");
 
-        #4e. Identify genomic variants using mpileup
+        # 4f. Identify genomic variants using mpileup
         ### Version 1.0: -D deprecated, use -t DP instead
         $cmd = "$samtools_dir/samtools mpileup -f $reference_genome -g -I -B -D ";
         $cmd .= "$output_dir/align/$index\_$sample\_mapped.sorted.bam > $output_dir/variants/$index\_$sample\_mapped.bcf";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to identify genomic variants with mpileup: $error_message\n@$stderr_buf";   }
+        $num_steps++;
+        print_progress($num_steps, $num_indices*7, " Identifying variants");
 
-        $cmd = "$bcftools_dir/bcftools view -c -g -I -v $output_dir/variants/$index\_$sample\_mapped.bcf > ";
-        $cmd .= "$output_dir/variants/$index\_$sample\_mapped.vcf";
-        ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
-        unless ($success)
-        {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
+        # 4g. Use bcftools to call SNPs using bcf files
+        ### -c -g -I -v
+#         $cmd = "$bcftools_dir/bcftools view -v $output_dir/variants/$index\_$sample\_mapped.bcf > ";
+#         $cmd .= "$output_dir/variants/$index\_$sample\_mapped.vcf";
+#         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
+#         unless ($success)
+#         {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
+        $num_steps++;
 
-        print "Completed variant calls for index $index\n";
+        # Summary of progress
+        $index_count++;
+        print_progress($num_steps, $num_indices*7, "Completing index $index");
     }
+    print "\n",
+    " Processed reads located in:\n  $output_dir/align/\n  $output_dir/variants/ \n";
 }
 
 1;

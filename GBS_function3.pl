@@ -64,20 +64,20 @@ sub f3
          -s "$reference_basename.3.bt2" && -s "$reference_basename.4.bt2" && \
          -s "$reference_basename.rev.1.bt2" && -s "$reference_basename.rev.2.bt2" )
     {
-        print "Reference genome index files present, proceeding to make alignments.\n";
+        print " Reference genome index files present, proceeding to make alignments.\n";
     }
     else
     {
         unless ( -s "$bowtie2_dir/bowtie2-build")
         {   die "ERROR: Could not locate bowtie2-build in $bowtie2_dir\n";   }
 
-        print "Creating reference index files. Please wait... \n";
+        print " Creating reference index files. Please wait... \n";
         my $cmd = "$bowtie2_dir/bowtie2-build $reference_genome $reference_basename";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         if ($success)
         {
-            print "Successfully built bowtie index files for $reference_genome\n";
+            print " Successfully built bowtie index files for $reference_genome\n";
         }
         else {
             print "ERROR: bowtie2_build did not complete successfully:\n";
@@ -86,7 +86,7 @@ sub f3
     }
 
     # Print the parameters being given to bowtie2
-    print "Running bowtie2 with the following parameters: \n";
+    print " Running bowtie2 with the following parameters: \n";
     if (@bowtie2_options)
     {
         print join(" ",@bowtie2_options);
@@ -107,6 +107,12 @@ sub f3
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 
     my @indices = `cat $index_file`;
+    my $num_indices = $#indices + 1;
+    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+    my $index_count = 0;
+    print_progress($index_count, $num_indices);
+
+    # BEGIN aligning by index
     foreach my $index (@indices)
     {
         chomp($index);
@@ -134,12 +140,10 @@ sub f3
             $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$index\_$sample.sam";
         }
 
-        print "Aligning samples with index $index. Please wait...\n";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         if ($success)
         {
-            print "Completed alignments for index $index\n";
             # Create a log documenting alignment stats
             my $alignlog = "logs/$index\_$sample\_bowtie2_output.log";
             open ALIGNLOG, ">$alignlog" or die "ERROR: Unable to create log file $alignlog\n";
@@ -151,8 +155,14 @@ sub f3
             die "$error_message\n@$stderr_buf\n";
         }
 
+        # Summary of progress
+        $index_count++;
+        print_progress($index_count, $num_indices, "Current index: $index");
         summarize_align($index, $sample, \@$stderr_buf);
     }
+    print "\n",
+    " Processed reads located in:\n  $output_dir/align/ \n",
+    " Summary (open in Excel or use command more): $summary_file\n";
 }
 
 ##############################
@@ -175,6 +185,7 @@ sub summarize_align
 
     ## TODO ##
     # Save values of interest into variables - this isn't always consistent. Extraneous whitespace by bowtie?
+    # Use pattern matching instead
     my $input_reads = $align_info[0];
     my $paired_reads = $align_info[4];
     my $percent_paired = $align_info[5];

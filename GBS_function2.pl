@@ -87,12 +87,15 @@ sub f2
         "Dropped Reads\t% Dropped\n";
     close SUMMARY or die "Unable to close $summary_file\n";
 
-    # BEGIN trimming by index
     my @indices = `cat $index_file`;
+    my $num_indices = $#indices + 1;
+    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+    my $index_count = 0;
+    print_progress($index_count, $num_indices);
+
+    # BEGIN trimming by index
     foreach my $index (@indices)
     {
-        ## TODO: Include print statements to mark the progress
-
         chomp($index);
 
         my $R1_reads = "$output_dir/demultiplex/$index\_$sample\_R1-clip.fastq";
@@ -121,7 +124,7 @@ sub f2
             run( command => $cmd, verbose => 0 );
         if ($success)
         {
-            print "Trimmomatic successfully finished trimming $index indexed reads.\n";
+            #print "Trimmomatic successfully finished trimming $index indexed reads.\n";
             my $trimlog = "logs/$index\_$sample\_trimmomatic\_output.log";
             open TRIMLOG, ">$trimlog";
             print TRIMLOG join " ", @$full_buf;
@@ -131,8 +134,14 @@ sub f2
             die "$error_message\n@$stderr_buf\n";
         }
 
+        # Summary of progress
+        $index_count++;
+        print_progress($index_count, $num_indices, "Current index: $index");
         summarize_trim($index, $sample, $output_dir, \@$stderr_buf);
     }
+    print "\n",
+        " Processed reads located in:\n  $output_dir/trim/ \n",
+        " Summary (open in Excel or use command more): $summary_file\n";
 }
 
 #################################

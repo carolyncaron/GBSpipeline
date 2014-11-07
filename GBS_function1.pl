@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 
 ##### STEP 1 : DEMULTIPLEX READS #####
-##### Usage: f1 sample_name index_file R1_file R2_file
+##### Usage: f1 sample_name index_file R1_file R2_file ouput_dir
 ##### Required user input:
 #####   sample_name : A sample name for naming files after processing reads (no spaces allowed)
 #####   index_file : A file containing the indices (aka barcodes) for distinguishing samples, provided by Illumina
@@ -39,7 +39,7 @@ sub function1
     my $output_dir = $_[5];
     unless ( -d $output_dir )
     {
-        print "No directory $output_dir exists. Create it? (yes/no) ";
+        print " No directory $output_dir exists. Create it? (yes/no) ";
         chomp (my $usr_input = <STDIN>);
         if ($usr_input =~ /yes/i) { system("mkdir -p $output_dir"); }
         else {
@@ -75,7 +75,7 @@ sub function1
     system("mkdir -p $output_dir/tmp/");
 
     # Keep counts on the curent index, R2 reads for an index, and the total raw read pair counts
-    my ( $count, $R2_count, $R1_raw_count, $R2_raw_count ) = 0;
+    my ( $R2_count, $R1_raw_count, $R2_raw_count ) = 0;
     my $wc_cmd = "wc -l $R1_file $R2_file";
     my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
         run( command => $wc_cmd, verbose => 0 );
@@ -97,19 +97,28 @@ sub function1
     print SUMMARY "Barcode\tRead1 count\t%of Raw Read1\tRead2 count\t% of Raw Read2\n";
     close SUMMARY or die "Unable to close $summary_file\n";
 
-    # BEGIN demultiplex
+    # BEGIN demultiplexing
+    my $index_count = 0;
+    print_progress($index_count, $num_indices);
+
     foreach my $index (@indices)
     {
+        # Five steps per index. Break it down so the progress bar reports more often.
+        my $num_steps = $index_count*5;
         chomp($index);
 
         ## a.
         # Search R1 reads for each barcode at the start of the sequence,
         # save to a temp file (-A 2 -B 1 options: include 2 lines after, 1 line before match)
         system("zgrep -A 2 -B 1 ^$index $R1_file > $output_dir/tmp/$index\_$sample\_R1.tmp");
+        $num_steps++;
+        print_progress($num_steps, $num_indices*5, " Current index: $index");
 
         ## b.
         # Remove the "--" separator between each read in each temp file and save as a FASTQ file
         system("grep -v ^- $output_dir/tmp/$index\_$sample\_R1.tmp > $output_dir/demultiplex/$index\_$sample\_R1.fastq");
+        $num_steps++;
+        print_progress($num_steps, $num_indices*5);
 
         ## c.
         # Trim off barcodes from each read using the barcode length after accounting for the
@@ -124,6 +133,8 @@ sub function1
         #CLIPPED->flush();
         select(STDOUT);
         close CLIPPED or die "ERROR: Could not close $output_dir/demultiplex/$index\_$sample\_R1-clip.fastq\n";
+        $num_steps++;
+        print_progress($num_steps, $num_indices*5);
 
         ## d.
         # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
@@ -133,6 +144,8 @@ sub function1
         #HEADERS->flush();
         select(STDOUT);
         close HEADERS or die "ERROR: Could not close $output_dir/tmp/$index.list\n";
+        $num_steps++;
+        print_progress($num_steps, $num_indices*5);
 
         ## e.
         # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
@@ -143,16 +156,17 @@ sub function1
         #R2_READS->flush();
         select(STDOUT);
         close R2_READS or die "ERROR: Could not close $output_dir/demultiplex/$index\_$sample\_R2.fastq\n";
+        $num_steps++;
+        print_progress($num_steps, $num_indices*5);
 
         # Summary of progress
-        $count++;
-        print "Demultiplexed barcode $index [$count/$num_indices]\n";
+        $index_count++;
         summarize_demultiplex($index, $sample, $output_dir, $R2_count, $R1_raw_count, $R2_raw_count);
     }
 
     # Search for reads that are missing a barcode
     # Create a master file containing headers of R1 reads with found indices
-    print "Placing reads without a barcode into a separate file... \n";
+    print "\n Handling reads without a barcode... ";
     my $indexed_list = "$output_dir/tmp/indexed\_$sample\_R1.list";
     my $concat_cmd = "cat $output_dir/tmp/*\_$sample.list > $indexed_list";
     ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
@@ -175,7 +189,7 @@ sub function1
             $R2_count = get_unindexed($read_file, $indexed_list, $read_pair);
             select(STDOUT);
             close NO_INDEX or die "ERROR: Could not close $unindexed\n";
-            print "$read_pair reads without an index placed in $unindexed\n";
+            #print "$read_pair reads without an index placed in $unindexed\n";
         }
         summarize_demultiplex("unindexed", $sample, $output_dir, $R2_count, $R1_raw_count, $R2_raw_count);
     }
@@ -184,7 +198,11 @@ sub function1
         print "ERROR: Could not concatenate R1 header files into one file:\n";
         die "$error_message\n@$stderr_buf\n";
     }
-    system("rm -r tmp/");
+    system("rm -r $output_dir/tmp/");
+
+    print "\n",
+          " Processed reads located in:\n  $output_dir/demultiplex/\n",
+          " Summary (open in Excel or use command more): $summary_file\n";
 }
 
 #################################
