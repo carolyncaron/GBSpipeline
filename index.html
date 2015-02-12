@@ -51,7 +51,7 @@
 <p>Ensure you choose the right binary for your operating system (either Linux or MacOS) and again, simply place the folder into your desired directory. If you would rather compile from source, the instructions are in the bowtie2 manual at: <a href="http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml">http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml</a>. This is also where you'll find the various options when running bowtie2, which can also be passed into the pipeline.</p>
 
 <h3>
-<a id="3-samtools" class="anchor" href="#3-samtools" aria-hidden="true"><span class="octicon octicon-link"></span></a>3. SAMtools</h3>
+<a id="3-samtools-and-bcftools" class="anchor" href="#3-samtools-and-bcftools" aria-hidden="true"><span class="octicon octicon-link"></span></a>3. SAMtools and BCFtools</h3>
 
 <p>Download link: <a href="http://www.htslib.org/download/">http://www.htslib.org/download/</a></p>
 
@@ -60,14 +60,14 @@
 <p>These packages need to be compiled; so open up a terminal window, enter the SAMtools directory in the location you've placed it and type 'make' from the command line:</p>
 
 <p><code>cd samtools-1.x/</code><br>
-<code>make</code>
-<code>make prefix=. install</code></p>
+<code>make</code><br>
+<code>make prefix=. install</code>  </p>
 
 <p>and similarly for BCFtools in the directory you unpacked it:</p>
 
-<p><code>cd bcftools-1.2/</code>
-<code>make</code>
-<code>make prefix=. install</code></p>
+<p><code>cd bcftools-1.2/</code><br>
+<code>make</code><br>
+<code>make prefix=. install</code>  </p>
 
 <p>You should see some output telling you that it compiled successfully (hopefully! See SAMtools documentation for help). For a great tutorial on how to use SAMtools (though it won't be necessary to use this pipeline, but it is a great package for handling copious amounts of sequence data), I highly recommend this tutorial: <a href="http://biobits.org/samtools_primer.html">http://biobits.org/samtools_primer.html</a></p>
 
