@@ -4,6 +4,7 @@
 ##### Usage: f4 samtools_dir bcftools_dir
 ##### Required input:
 #####   samtools_dir - location of user's copy of samtools
+#####   bcftools_dir - location of user's copy of bcftools
 ##### Output:
 #####   $output_dir/align/$index_$sample_mapped.sam
 #####   $output_dir/align/$index_$sample_mapped.sorted.sam
@@ -31,6 +32,10 @@ sub f4
     unless ( -s "$bcftools_dir/bcftools")
     {   die "ERROR: Can't locate bcftools in $bcftools_dir\n";  }
 
+    # Check samtools + bcftools versions
+    my $sam_version = `$samtools_dir/samtools --version-only` || die "ERROR: Ensure that samtools version is 1.0 or greater.\n";
+    my $bcf_version = `$bcftools_dir/bcftools --version-only` || die "ERROR: Ensure that bcftools version is 1.0 or greater.\n";
+
     unless ( -f $index_file && -r $index_file )
     {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
 
@@ -50,19 +55,25 @@ sub f4
     foreach my $index (@indices)
     {
         # Seven steps per index... break it down so progress bar reports more often
-        my $num_steps = $index_count*7;
+        my $num_steps = $index_count*8;
         chomp($index);
         my $sam_file = "$output_dir/align/$index\_$sample.sam";
 
+        # Multi-mapping filtering
+        bwt2_besthits($sam_file, "$output_dir/variants/$index\_$sample\_besthits.sam");
+        $num_steps++;
+        print_progress($num_steps, $num_indices*8, " Filtering multi-mapped reads");
+
         # 4a. Filter samfiles of sequences which did not align to save space
         ### Version 1.0: -S not necessary, SAM format auto detected
-        my $cmd = "$samtools_dir/samtools view -ShF 4 -T $reference_genome $sam_file > ";
+        my $cmd = "$samtools_dir/samtools view -ShF 4 -T $reference_genome ";
+        $cmd .= "$output_dir/variants/$index\_$sample\_besthits.sam > ";
         $cmd .= "$output_dir/align/$index\_$sample\_mapped.sam";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Could not filter $sam_file for unmapped reads:\n$error_message\n@$stderr_buf";   }
+        {   die "ERROR: Could not filter $output_dir/variants/$index\_$sample\_besthits.sam for unmapped reads:\n$error_message\n@$stderr_buf";   }
         $num_steps++;
-        print_progress($num_steps, $num_indices*7, " Filtering SAM          ");
+        print_progress($num_steps, $num_indices*8, " Filtering non-aligned reads ");
 
         # 4b. Sort sam files so they can be indexed when converted to BAM
         $cmd = "sort -k3,3 -k4,4n $output_dir/align/$index\_$sample\_mapped.sam > ";
@@ -71,7 +82,7 @@ sub f4
         unless ($success)
         {   die "ERROR: Could not sort $index\_$sample\_mapped.sam: $error_message\n@$stderr_buf";   }
         $num_steps++;
-        print_progress($num_steps, $num_indices*7, " Sorting SAM  ");
+        print_progress($num_steps, $num_indices*8, " Sorting SAM                 ");
 
         # 4c. Convert to BAM format (Creates .fai files from the reference genome then BAM)
         $cmd = "$samtools_dir/samtools view -bT $reference_genome $output_dir/align/$index\_$sample\_mapped.sorted.sam ";
@@ -80,9 +91,7 @@ sub f4
         unless ($success)
         {   die "ERROR: Failed to convert $index\_$sample\_mapped.sorted.sam to BAM format: $error_message\n@$stderr_buf";   }
         $num_steps++;
-        print_progress($num_steps, $num_indices*7, " Converting to BAM");
-
-        #print "Index $index files converted from .sam to .bam\n";
+        print_progress($num_steps, $num_indices*8, " Converting to BAM");
 
         # 4d. Sort BAM
         $cmd = "$samtools_dir/samtools sort $output_dir/align/$index\_$sample\_mapped.bam ";
@@ -91,7 +100,7 @@ sub f4
         unless ($success)
         {   die "ERROR: Failed to sort $index\_$sample\_mapped.bam: $error_message\n@$stderr_buf";   }
         $num_steps++;
-        print_progress($num_steps, $num_indices*7, " Sorting BAM      ");
+        print_progress($num_steps, $num_indices*8, " Sorting BAM      ");
 
         # 4e. Index BAM
         $cmd = "$samtools_dir/samtools index $output_dir/align/$index\_$sample\_mapped.sorted.bam";
@@ -99,7 +108,7 @@ sub f4
         unless ($success)
         {   die "ERROR: Failed to index $index\_$sample\_mapped.sorted.bam: $error_message\n@$stderr_buf";   }
         $num_steps++;
-        print_progress($num_steps, $num_indices*7, "Indexing BAM");
+        print_progress($num_steps, $num_indices*8, "Indexing BAM");
 
         # 4f. Identify genomic variants using mpileup
         ### Version 1.0: -D deprecated, use -t DP instead
@@ -109,23 +118,83 @@ sub f4
         unless ($success)
         {   die "ERROR: Failed to identify genomic variants with mpileup: $error_message\n@$stderr_buf";   }
         $num_steps++;
-        print_progress($num_steps, $num_indices*7, " Identifying variants");
+        print_progress($num_steps, $num_indices*8, " Identifying variants");
 
         # 4g. Use bcftools to call SNPs using bcf files
         ### -c -g -I -v
-#         $cmd = "$bcftools_dir/bcftools view -v $output_dir/variants/$index\_$sample\_mapped.bcf > ";
-#         $cmd .= "$output_dir/variants/$index\_$sample\_mapped.vcf";
-#         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
-#         unless ($success)
-#         {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
+        $cmd = "$bcftools_dir/bcftools call -c -v $output_dir/variants/$index\_$sample\_mapped.bcf > ";
+        $cmd .= "$output_dir/variants/$index\_$sample\_mapped.vcf";
+        ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
+        unless ($success)
+        {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
         $num_steps++;
 
         # Summary of progress
         $index_count++;
-        print_progress($num_steps, $num_indices*7, "Completing index $index");
+        print_progress($num_steps, $num_indices*8, "Completed index $index");
     }
-    print "\n",
-    " Processed reads located in:\n  $output_dir/align/\n  $output_dir/variants/ \n";
+
+    # Merge mpileup results into a single file
+
+
+    print "\n Processed reads located in:\n  $output_dir/align/\n  $output_dir/variants/ \n";
+}
+
+# Filters bowtie2 results to choose the "best" alignments for reads which multimapped.
+sub bwt2_besthits
+{
+    my $sam_file = $_[0];
+    my $out_file = $_[1];
+
+    open(SAM,"<".$sam_file) || die "ERROR: Could not open $sam_file\n";
+    open(OUT,">".$out_file) || die "ERROR: Could not write out to $out_file\n";
+
+    my %data;
+    # Don't know the significance of this variable
+    my $cons = 18;
+    while(<SAM>) {
+        chomp;
+        if ($_ =~ /^@/)
+        {   print OUT $_."\n";  }
+        else
+        {   my ($id1, $bw_flag1, $s1, $s_s1, $mapq1, $maps1, $ja1, $p_s1, $size1, $seq1, $jb1, $aln_score1, @junks1) = (split("\t",$_));
+            $aln_score1=~s/AS:i://g;
+            next if $s1 eq '*';
+            my $l1 = $_."\n";
+            my $l2 = <SAM>;
+
+            my ($id2, $bw_flag2, $s2, $s_s2, $mapq2, $maps2, $ja2, $p_s2, $size2, $seq2, $jb2, $aln_score2, @junks2) = (split("\t",$l2));
+            $aln_score2=~s/AS:i://g;
+
+            unless ($id1 eq $id2 && $s1 eq $s2 && $s_s1 eq $p_s2 && $p_s1 eq $s_s2)
+            {
+                die "ERROR: Unexpected file format\n";
+            }
+
+            if (exists($data{$id1}))
+            {
+                if( $data{$id1}->{score} <= ($aln_score1 + $aln_score2+$cons))
+                {
+                    $data{$id1}->{num_best}+=1;
+                }
+            }
+            else
+            {
+                $data{$id1} = {l1=>$l1, l2=>$l2,num_best=>1,score=>$aln_score1+$aln_score2};
+            }
+        }
+    }
+    my $num_uniq_hits = 0;
+    my $num_multi_hits = 0;
+
+    foreach my $id (keys %data)
+    {
+        if ($data{$id}->{num_best} eq 1) {
+            $num_uniq_hits++;
+            print OUT $data{$id}->{l1}.$data{$id}->{l2};
+        }
+        else {   $num_multi_hits++; }
+    }
 }
 
 1;

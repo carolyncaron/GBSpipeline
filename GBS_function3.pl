@@ -110,7 +110,7 @@ sub f3
     my $num_indices = $#indices + 1;
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
     my $index_count = 0;
-    print_progress($index_count, $num_indices);
+    #print_progress($index_count, $num_indices);
 
     # BEGIN aligning by index
     foreach my $index (@indices)
@@ -178,25 +178,26 @@ sub summarize_align
     # All the info is in the first array element, so just store it as a string
     # such that it can be split up into pieces
     my $sample_summary = $bowtie2_output[0];
-    # Eliminate indenting and newlines to clean it up
-    $sample_summary =~ s/  //g;
-    $sample_summary =~ s/\n/ /g;
-    my @align_info = split(/ /, $sample_summary);
+    # Eliminate indenting to clean it up
+    $sample_summary =~ s/^\s+//;
+    # Store each line as its own array element
+    my @align_info = split(/\n/, $sample_summary);
 
-    ## TODO ##
-    # Save values of interest into variables - this isn't always consistent. Extraneous whitespace by bowtie?
-    # Use pattern matching instead
-    my $input_reads = $align_info[0];
-    my $paired_reads = $align_info[4];
-    my $percent_paired = $align_info[5];
-    my $overall_alignment_percent = $align_info[29];
-
-    #print "Input reads: $input_reads\nPaired reads: $paired_reads\nPercent paired: $percent_paired\nOverall: $overall_alignment_percent\n";
-    #print join " | ", @align_info;
+    ## Can go on a line-by-line basis, which appears to be consistent:
+    # 1st line: # of input reads
+    $align_info[0] =~ /(\d+) reads;/;
+    my $input_reads = $1;
+    # 2nd line: # and % of paired reads
+    $align_info[1] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%).+were paired;/;
+    my $paired_reads = $1;
+    my $percent_paired = $2;
+    # Last line: % overall alignment rate
+    $align_info[$#align_info] =~ /(\d+\.\d+\s?%)/;
+    my $overall_alignment = $1;
 
     my $summary_file = "summary_files/$sample\_align\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "$index\t$input_reads\t$paired_reads\t$percent_paired\t$overall_alignment_percent\n";
+    print SUMMARY "$index\t$input_reads\t$paired_reads\t$percent_paired\t$overall_alignment\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 
