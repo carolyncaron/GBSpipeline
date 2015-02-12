@@ -53,16 +53,23 @@
 <h3>
 <a id="3-samtools" class="anchor" href="#3-samtools" aria-hidden="true"><span class="octicon octicon-link"></span></a>3. SAMtools</h3>
 
-<p>Download link: <a href="http://sourceforge.net/projects/samtools/files/samtools/0.1.19/">http://sourceforge.net/projects/samtools/files/samtools/0.1.19/</a></p>
+<p>Download link: <a href="http://www.htslib.org/download/">http://www.htslib.org/download/</a></p>
 
-<p>Note: SAMtools has just graduated to a full 1.0 version; however, you will still need to use version 0.1.19 for this pipeline to work. This version comes packaged with bcftools which is also necessary for the pipeline. </p>
+<p>Note: SAMtools and bcftools were previously packaged together but now require you download and install them separately. As well, any versions prior to the 1.0 releases no longer work with the pipeline (ie. you will need SAMtools 1.0+ and BCFtools 1.0+).</p>
 
-<p>SAMtools needs to be compiled; so open up a terminal window and enter the SAMtools directory in the location you've placed it and type 'make' from the command line:</p>
+<p>These packages need to be compiled; so open up a terminal window, enter the SAMtools directory in the location you've placed it and type 'make' from the command line:</p>
 
-<p><code>cd samtools-0.1.19</code><br>
-<code>make</code></p>
+<p><code>cd samtools-1.x/</code><br>
+<code>make</code>
+<code>make prefix=. install</code></p>
 
-<p>You should see some output telling you that it compiled successfully (hopefully!). For a great tutorial on how to use SAMtools (though it won't be necessary to use this pipeline, but it is a great package for handling copious amounts of sequence data), I highly recommend this tutorial: <a href="http://biobits.org/samtools_primer.html">http://biobits.org/samtools_primer.html</a></p>
+<p>and similarly for BCFtools in the directory you unpacked it:</p>
+
+<p><code>cd bcftools-1.2/</code>
+<code>make</code>
+<code>make prefix=. install</code></p>
+
+<p>You should see some output telling you that it compiled successfully (hopefully! See SAMtools documentation for help). For a great tutorial on how to use SAMtools (though it won't be necessary to use this pipeline, but it is a great package for handling copious amounts of sequence data), I highly recommend this tutorial: <a href="http://biobits.org/samtools_primer.html">http://biobits.org/samtools_primer.html</a></p>
 
 <h1>
 <a id="download" class="anchor" href="#download" aria-hidden="true"><span class="octicon octicon-link"></span></a>Download</h1>
@@ -92,7 +99,7 @@ The following lists examples to demonstrate how to run each step in sequential o
 
 <ol>
 <li><p>The first step is to demultiplex the reads into separate files for each sample. For example, suppose we are doing a run with Medicago samples:<br>
-<code>./GBS_pipeline.pl demultiplex Medicago barcodes.list TGCA Mt4.0_read1.fastq Mt4.0_read2.fastq</code><br>
+<code>./GBS_pipeline.pl demultiplex Medicago barcodes.list TGCA Mt4.0_read1.fastq Mt4.0_read2.fastq GBS_test</code><br>
 You should see printed to the console something like (give it some time to complete!):<br>
 <code>Calling demultiplex …</code><br>
 <code>Demultiplexed barcode CTCCTGCA [1/3]</code><br>
