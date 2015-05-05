@@ -1,10 +1,10 @@
 #!/usr/bin/perl -w
 
 ##### STEP 1 : DEMULTIPLEX READS #####
-##### Usage: f1 sample_name index_file R1_file R2_file ouput_dir
+##### Usage: f1 sample_name index_file RE_site R1_file R2_file output_dir
 ##### Required user input:
 #####   sample_name : A sample name for naming files after processing reads (no spaces allowed)
-#####   index_file : A file containing the indices (aka barcodes) for distinguishing samples, provided by Illumina
+#####   index_file : A file containing the indices (aka barcodes) for distinguishing samples
 #####   RE_site: A short nucleotide string representing the rare-cutter restriction site used in extracting the reads
 #####   R1_file : A FASTQ file (zipped or unzipped) containing raw Read 1 reads
 #####   R2_file : A FASTQ file (zipped or unzipped) containing raw Read 2 reads
@@ -64,10 +64,17 @@ sub function1
         close READS or die "ERROR: Could not close $R_file\n";
     }
 
+    # @TODO: Check indices file is valid. Either:
+    # 1. It just contains the barcodes, each on its own line (1 column)
+    # 2. Each line contains the name of the sample followed by the barcode (tab delimited thus 2 columns)
+
     # Place indices in an array
     my @indices = `cat $index_file`;
     my $num_indices = $#indices + 1;
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+    # Start the progress bar since wc command can take a while depending on the file.
+    my $index_count = 0;
+    print_progress($index_count, $num_indices, "Counting reads...");
 
     # Create a directory for demultiplexed files
     system("mkdir -p $output_dir/demultiplex/");
@@ -98,14 +105,12 @@ sub function1
     close SUMMARY or die "Unable to close $summary_file\n";
 
     # BEGIN demultiplexing
-    my $index_count = 0;
-    print_progress($index_count, $num_indices);
-
     foreach my $index (@indices)
     {
         # Five steps per index. Break it down so the progress bar reports more often.
         my $num_steps = $index_count*5;
         chomp($index);
+        $index =~ s/ //g;
 
         ## a.
         # Search R1 reads for each barcode at the start of the sequence,
@@ -165,7 +170,7 @@ sub function1
     }
 
     # Search for reads that are missing a barcode
-    # Create a master file containing headers of R1 reads with found indices
+    # First create a master file containing headers of R1 reads with found indices
     print "\n Handling reads without a barcode... ";
     my $indexed_list = "$output_dir/tmp/indexed\_$sample\_R1.list";
     my $concat_cmd = "cat $output_dir/tmp/*\_$sample.list > $indexed_list";
@@ -225,7 +230,7 @@ sub summarize_demultiplex
     my $R1_demultiplexed;
     if ($index eq 'unindexed')
     {
-        $R1_demultiplexed = "$output_dir/tmp/indexed\_$sample\_R1.list";
+        $R1_demultiplexed = "$output_dir/tmp/unindexed\_$sample\_R1.list";
     }
     else
     {

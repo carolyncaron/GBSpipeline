@@ -8,8 +8,8 @@
 #####   function3 bowtie2_dir reference_genome [-- options]
 #####   function4 samtools_dir
 ##### Requirements:
-#####   Trimmomatic (v0.17-0.32), Bowtie2 (v2.x.x), SAMtools (v0.0.19)
-#####   A file listing barcodes (indices) from Illumina for demultiplexing
+#####   Trimmomatic (v0.17-0.33), Bowtie2 (v2.x.x), SAMtools (v1.x), BCFtools (v1.x)
+#####   A file listing barcodes (indices) for demultiplexing
 #####   Paired read data in separate FASTQ files (R1 reads and R2 reads)
 #####   A file containing adaptor and other sequences for trimming purposes
 #####   A FASTA file containing the reference genome
@@ -124,7 +124,7 @@ bowtie2 is run with the following default options:
     -R [5]:
             max number of times reads with repetitive seeds
             will be re-seeded
-    -k [1]:
+    -k [3]:
             search for at most k distinct, valid alignments for
             each read
     -p [4]:
@@ -338,7 +338,7 @@ if ( exists ( $ARGV[0] ) )
 
             # Save the sample and index file into the configuration file
             add_to_config("SAMPLE", $sample, "The generic sample name used in naming files during processing");
-            add_to_config("INDEX_FILE", $index_file, "The filename of the list of indices (aka barcodes) provided by Illumina");
+            add_to_config("INDEX_FILE", $index_file, "The filename of the list of indices (aka barcodes)");
             add_to_config("READS_DIR", $output_dir, "The location where output of processed reads are placed");
 
             #summarize($FUNCTION, $start);
@@ -454,7 +454,7 @@ sub summarize
 }
 
 ##################################
-##### Progress reporting
+##### Progress reporting #########
 ##################################
 # Input: A current count of the number of indices processed, the total number of indices
 sub print_progress
@@ -462,6 +462,9 @@ sub print_progress
     my $index_count = $_[0];
     my $num_indices = $_[1];
     my $message = $_[2];
+
+    print "In print_progess: $index_count, $num_indices\n";
+
     # Check if a message was given, otherwise give it the empty string
     unless ( length $message ) { $message = ""; }
     # Calculate percentage of reads indexed
@@ -484,5 +487,4 @@ sub print_progress
     }
     # Output percentage then shift cursor to beginning of the line
     print "] $percent_complete %  $message\r";
-    sleep 1;
 }

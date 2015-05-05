@@ -21,7 +21,7 @@ sub f2
     ##### DEFAULT VARIABLES FOR TRIMMOMATIC #####
     #############################################
     # Version
-        my $version = '0.32';
+        my $version = '0.33';
     # ILLUMINACLIP:
         my $seed_mismatches = '2';
         my $palindrome_clip_threshold = '30';
@@ -109,7 +109,7 @@ sub f2
         # Run Trimmomatic
         my $cmd = "java -classpath $trimmomatic_path org.usadellab.trimmomatic.TrimmomaticPE ";
         $cmd .= "-phred33 ";
-        $cmd .= "-trimlog trim/$index.trim.log ";
+        $cmd .= "-trimlog logs/$index.trim.log ";
         $cmd .= "$R1_reads $R2_reads ";
         $cmd .= "$output_dir/trim/$index\_$sample\_R1-p.fastq $output_dir/trim/$index\_$sample\_R1-s.fastq ";
         $cmd .= "$output_dir/trim/$index\_$sample\_R2-p.fastq $output_dir/trim/$index\_$sample\_R2-s.fastq ";

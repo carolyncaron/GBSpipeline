@@ -18,8 +18,10 @@ sub f3
     #########################################
     ##### DEFAULT VARIABLES FOR BOWTIE2 #####
     #########################################
-    my $max_valid_alignments = '1';      # k
-    my $num_threads = '4';               # p
+    # Default is set to 3 to allow a single read to map up to 3 times. Note that setting
+    # this value higher will greatly increase the amount of time bowtie2 needs to run.
+    my $max_valid_alignments = '3';      # k
+    my $num_threads = '1';               # p
     my $max_fragment_length = '11000';   # X
     my $max_reseed_rate = '5';           # R
     #########################################
@@ -53,6 +55,13 @@ sub f3
 
     system("mkdir -p $output_dir/align/");
     system("mkdir -p logs/");
+
+    # Begin recording progress since building reference index files can take a while
+    my @indices = `cat $index_file`;
+    my $num_indices = $#indices + 1;
+    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+    my $index_count = 0;
+    print_progress($index_count, $num_indices);
 
     # Remove file extension to get the basename
     my $reference_basename = $reference_genome;
@@ -106,16 +115,11 @@ sub f3
     print SUMMARY "Index\tInput Reads\tReads Paired\t% Reads Paired\tOverall Alignment Rate\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 
-    my @indices = `cat $index_file`;
-    my $num_indices = $#indices + 1;
-    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
-    my $index_count = 0;
-    #print_progress($index_count, $num_indices);
-
     # BEGIN aligning by index
     foreach my $index (@indices)
     {
         chomp($index);
+        $index =~ s/ //g;
 
         my $R1_trimmed = "$output_dir/trim/$index\_$sample\_R1-p.fastq";
         my $R2_trimmed = "$output_dir/trim/$index\_$sample\_R2-p.fastq";
@@ -140,6 +144,9 @@ sub f3
             $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$index\_$sample.sam";
         }
 
+        ############## SEQUENTIAL RUN ###############
+        # Run bowtie2 for each sample sequentially. If desired to run them concurrently,
+        #   comment out the following if block and uncomment the section below
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         if ($success)
@@ -159,9 +166,18 @@ sub f3
         $index_count++;
         print_progress($index_count, $num_indices, "Current index: $index");
         summarize_align($index, $sample, \@$stderr_buf);
+        ##############################################
+
+        ############## CONCURRENT RUN ################
+        # The following code allows the individual bowtie2 commands to be run in the background,
+        # effectively aligning reads from all samples concurrently.
+        #my $alignlog = "logs/$index\_$sample\_bowtie2_output.log";
+        #system("$cmd 2>$alignlog &");
+        ##############################################
     }
+
     print "\n",
-    " Processed reads located in:\n  $output_dir/align/ \n",
+    " Processed reads will be located in:\n  $output_dir/align/ \n",
     " Summary (open in Excel or use command more): $summary_file\n";
 }
 
@@ -174,6 +190,7 @@ sub summarize_align
     my $index = $_[0];
     my $sample = $_[1];
     my @bowtie2_output = @{$_[2]};
+    print join " ", @bowtie2_output;
 
     # All the info is in the first array element, so just store it as a string
     # such that it can be split up into pieces
@@ -187,17 +204,17 @@ sub summarize_align
     # 1st line: # of input reads
     $align_info[0] =~ /(\d+) reads;/;
     my $input_reads = $1;
-    # 2nd line: # and % of paired reads
-    $align_info[1] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%).+were paired;/;
-    my $paired_reads = $1;
-    my $percent_paired = $2;
+    # Fourth line: # of uniquely mapping reads
+    $align_info[1] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%).+ aligned concordantly exactly 1 time/;
+    my $unique_reads = $1;
+    my $percent_unique = $2;
     # Last line: % overall alignment rate
-    $align_info[$#align_info] =~ /(\d+\.\d+\s?%)/;
+    $align_info[$#align_info] =~ /(\d+\.\d+\s?%) overall alignment rate/;
     my $overall_alignment = $1;
 
     my $summary_file = "summary_files/$sample\_align\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "$index\t$input_reads\t$paired_reads\t$percent_paired\t$overall_alignment\n";
+    print SUMMARY "$index\t$input_reads\t$unique_reads\t$percent_unique\t$overall_alignment\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 
