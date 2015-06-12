@@ -73,34 +73,56 @@ sub function1
     # 1. It just contains the barcodes, each on its own line (1 column)
     # 2. Each line contains the name of the sample followed by the barcode (tab delimited thus 2 columns)
     open (INDICES, $index_file) or die "ERROR: Unable to open $index_file.\n";
-    # Create arrays for just indices
-    my @indices;
+    # Create array for just indices
+    #my @indices;
+
+    my %samples = ();
+
     my $first_line = <INDICES>;
     chomp $first_line;
-    my @columns = split("\t", $first_line);
+    my @columns = split(/\t/, $first_line);
     my $num_col = ($#columns)+1;
     if ($num_col > 2) { die "ERROR: Unexpected number of columns in $index_file: $num_col \n"; }
     if ($num_col == 2)
     {
         # Create an array for just sample names
-        my @samples;
+        #my %samples = ();
         unless ( $columns[1] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
-        push (@indices, $columns[1]);
-        while (my $line = <INDICES>)
+        # Since we already looked at the first line, add its contents to the array of indices and samples hash,
+        # then iterate over the remainder of the file
+        #push (@indices, $columns[1]);
+        push @{ $samples{ $columns[0] }}, $columns[1];
+        while (<INDICES>)
         {
-            chomp $line;
-            my @fields = split "\t", $line;
-            push @indices, $fields[1];
-            push @samples, $fields[0];
+            chomp;
+            my ($sname, $barcode) = split (/\t/, $_);
+            #push @indices, $barcode;
+            # Remove whitespace
+            $sname =~ s/ //g;
+            #@TODO: If a barcode is duplicated for a sample (sadly I've run into this), ensure it isn't added to the hash twice
+            push @{ $samples{ $sname }}, $barcode;
+            #push @samples, $sname;
         }
+        #print Dumper(\%samples);
+
     } else # 1 column index file = just indices
     {
-        @indices = `cat $index_file`;
-        unless ( $indices[0] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
+        push @{ $samples{ $columns[0] }}, $columns[0];
+        while (<INDICES>)
+        {
+            chomp($_);
+            my $sname = $_;
+            $sname =~ s/ //g;
+            push @{ $samples{ $sname }}, $sname;
+        }
+        #print Dumper(\%samples);
+
+        #@indices = `cat $index_file`;
+        #unless ( $indices[0] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
     }
     close INDICES or die "ERROR: Unable to close $index_file\n";
 
-    my $num_indices = $#indices + 1;
+    my $num_indices = keys %samples;
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
     # Start the progress bar since wc command can take a while depending on the file.
     my $index_count = 0;
@@ -129,6 +151,7 @@ sub function1
     print SUMMARY "Barcode\tRead1 count\t%of Raw Read1\tRead2 count\t% of Raw Read2\n";
     close SUMMARY or die "ERROR: Unable to close $summary_file\n";
 
+    #@TODO: Iterate through %samples
     # BEGIN demultiplexing
     foreach my $index (@indices)
     {
@@ -188,6 +211,8 @@ sub function1
         close R2_READS or die "ERROR: Could not close $output_dir/demultiplex/$index\_$sample\_R2.fastq\n";
         $num_steps++;
         print_progress($num_steps, $num_indices*5);
+
+
 
         # Summary of progress
         $index_count++;
