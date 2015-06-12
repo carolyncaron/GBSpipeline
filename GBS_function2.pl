@@ -97,6 +97,7 @@ sub f2
     foreach my $index (@indices)
     {
         chomp($index);
+        $index =~ s/ //g;
 
         my $R1_reads = "$output_dir/demultiplex/$index\_$sample\_R1-clip.fastq";
         my $R2_reads = "$output_dir/demultiplex/$index\_$sample\_R2.fastq";

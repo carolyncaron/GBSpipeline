@@ -463,8 +463,6 @@ sub print_progress
     my $num_indices = $_[1];
     my $message = $_[2];
 
-    print "In print_progess: $index_count, $num_indices\n";
-
     # Check if a message was given, otherwise give it the empty string
     unless ( length $message ) { $message = ""; }
     # Calculate percentage of reads indexed

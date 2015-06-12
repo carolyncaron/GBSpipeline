@@ -28,7 +28,7 @@ sub function1
     {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
 
     my $RE_site = $_[2];
-    unless ( $RE_site !~ /(ATGC)/i ) { die "ERROR: Restriction enzyme site must contain only nucleotides [ACGTN].\n"; }
+    unless ( $RE_site !~ /(ATGC)/i ) { die "ERROR: Restriction enzyme site must contain only nucleotides [ACGT].\n"; }
 
     my $R1_file = $_[3];
     my $R2_file = $_[4];
@@ -64,22 +64,47 @@ sub function1
         close READS or die "ERROR: Could not close $R_file\n";
     }
 
-    # @TODO: Check indices file is valid. Either:
+    # Create a directory for demultiplexed files
+    system("mkdir -p $output_dir/demultiplex/");
+    # Create a directory for files that will only be kept temporarily
+    system("mkdir -p $output_dir/tmp/");
+
+    # Check that the index_file is valid. Either:
     # 1. It just contains the barcodes, each on its own line (1 column)
     # 2. Each line contains the name of the sample followed by the barcode (tab delimited thus 2 columns)
+    open (INDICES, $index_file) or die "ERROR: Unable to open $index_file.\n";
+    # Create arrays for just indices
+    my @indices;
+    my $first_line = <INDICES>;
+    chomp $first_line;
+    my @columns = split("\t", $first_line);
+    my $num_col = ($#columns)+1;
+    if ($num_col > 2) { die "ERROR: Unexpected number of columns in $index_file: $num_col \n"; }
+    if ($num_col == 2)
+    {
+        # Create an array for just sample names
+        my @samples;
+        unless ( $columns[1] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
+        push (@indices, $columns[1]);
+        while (my $line = <INDICES>)
+        {
+            chomp $line;
+            my @fields = split "\t", $line;
+            push @indices, $fields[1];
+            push @samples, $fields[0];
+        }
+    } else # 1 column index file = just indices
+    {
+        @indices = `cat $index_file`;
+        unless ( $indices[0] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
+    }
+    close INDICES or die "ERROR: Unable to close $index_file\n";
 
-    # Place indices in an array
-    my @indices = `cat $index_file`;
     my $num_indices = $#indices + 1;
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
     # Start the progress bar since wc command can take a while depending on the file.
     my $index_count = 0;
     print_progress($index_count, $num_indices, "Counting reads...");
-
-    # Create a directory for demultiplexed files
-    system("mkdir -p $output_dir/demultiplex/");
-    # Create a directory for files that will only be kept temporarily
-    system("mkdir -p $output_dir/tmp/");
 
     # Keep counts on the curent index, R2 reads for an index, and the total raw read pair counts
     my ( $R2_count, $R1_raw_count, $R2_raw_count ) = 0;
@@ -102,7 +127,7 @@ sub function1
     my $summary_file = "summary_files/$sample\_demultiplex\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
     print SUMMARY "Barcode\tRead1 count\t%of Raw Read1\tRead2 count\t% of Raw Read2\n";
-    close SUMMARY or die "Unable to close $summary_file\n";
+    close SUMMARY or die "ERROR: Unable to close $summary_file\n";
 
     # BEGIN demultiplexing
     foreach my $index (@indices)
@@ -121,7 +146,7 @@ sub function1
 
         ## b.
         # Remove the "--" separator between each read in each temp file and save as a FASTQ file
-        system("grep -v ^- $output_dir/tmp/$index\_$sample\_R1.tmp > $output_dir/demultiplex/$index\_$sample\_R1.fastq");
+        system("grep -v ^- $output_dir/tmp/$index\_$sample\_R1.tmp > $output_dir/tmp/$index\_$sample\_R1-unclipped.fastq");
         $num_steps++;
         print_progress($num_steps, $num_indices*5);
 
@@ -129,15 +154,15 @@ sub function1
         # Trim off barcodes from each read using the barcode length after accounting for the
         # restriction site within the barcode
         my $clip = $index;
-        $clip =~ s/$RE_site$//i;
+        # $clip =~ s/$RE_site$//i;
         my $len = length($clip);
-        open CLIPPED, ">$output_dir/demultiplex/$index\_$sample\_R1-clip.fastq"
-            or die "ERROR: Could not create $output_dir/demultiplex/$index\_$sample\_R1-clip\n";
+        my $R1_clipped = "$output_dir/demultiplex/$index\_$sample\_R1.fastq";
+        open CLIPPED, ">$R1_clipped" or die "ERROR: Could not create $R1_clipped\n";
         select(CLIPPED);
-        fix_r1("$output_dir/demultiplex/$index\_$sample\_R1.fastq", $len);
+        fix_r1("$output_dir/tmp/$index\_$sample\_R1-unclipped.fastq", $len);
         #CLIPPED->flush();
         select(STDOUT);
-        close CLIPPED or die "ERROR: Could not close $output_dir/demultiplex/$index\_$sample\_R1-clip.fastq\n";
+        close CLIPPED or die "ERROR: Could not close $R1_clipped\n";
         $num_steps++;
         print_progress($num_steps, $num_indices*5);
 
@@ -145,7 +170,7 @@ sub function1
         # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
         open HEADERS, ">$output_dir/tmp/$index\_$sample.list" or die "ERROR: Could not create $output_dir/tmp/$index\_$sample.list\n";
         select(HEADERS);
-        get_id("$output_dir/demultiplex/$index\_$sample\_R1-clip.fastq");
+        get_id($R1_clipped);
         #HEADERS->flush();
         select(STDOUT);
         close HEADERS or die "ERROR: Could not close $output_dir/tmp/$index.list\n";
@@ -203,8 +228,6 @@ sub function1
         print "ERROR: Could not concatenate R1 header files into one file:\n";
         die "$error_message\n@$stderr_buf\n";
     }
-    system("rm -r $output_dir/tmp/");
-
     print "\n",
           " Processed reads located in:\n  $output_dir/demultiplex/\n",
           " Summary (open in Excel or use command more): $summary_file\n";
@@ -230,7 +253,7 @@ sub summarize_demultiplex
     my $R1_demultiplexed;
     if ($index eq 'unindexed')
     {
-        $R1_demultiplexed = "$output_dir/tmp/unindexed\_$sample\_R1.list";
+        $R1_demultiplexed = "$output_dir/tmp/indexed\_$sample\_R1.list";
     }
     else
     {
