@@ -6,8 +6,8 @@
 #####   bowtie2_dir - location of bowtie2 installation
 #####   reference_genome - the pathname of the reference genome sequence
 ##### Output:
-#####   $output_dir/align/$index_$sample.sam
-#####   $output_dir/align/$index_$sample_align.log
+#####   $output_dir/align/$sample_$population.sam
+#####   $output_dir/align/$sample_$population_align.log
 #####   *If not already present, reference genome index files*
 
 use strict;
@@ -29,7 +29,7 @@ sub f3
     # Collect function-specific parameters
     my $bowtie2_dir = $_[0];
     my $reference_genome = $_[1];
-    my $sample = $_[2];
+    my $population = $_[2];
     my $index_file = $_[3];
     my $output_dir = $_[4];
 
@@ -57,11 +57,11 @@ sub f3
     system("mkdir -p logs/");
 
     # Begin recording progress since building reference index files can take a while
-    my @indices = `cat $index_file`;
-    my $num_indices = $#indices + 1;
-    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
-    my $index_count = 0;
-    print_progress($index_count, $num_indices);
+    my @samples = `cut -f1 $index_file`;
+    my $num_samples = $#samples + 1;
+    if ($num_samples == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+    my $sample_count = 0;
+    print_progress($sample_count, $num_samples);
 
     # Remove file extension to get the basename
     my $reference_basename = $reference_genome;
@@ -110,19 +110,19 @@ sub f3
 
     # Create summary file
     system("mkdir -p summary_files/");
-    my $summary_file = "summary_files/$sample\_align\_summary.txt";
+    my $summary_file = "summary_files/$population\_align\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "Index\tInput Reads\tReads Paired\t% Reads Paired\tOverall Alignment Rate\n";
+    print SUMMARY "Sample\tInput Reads\tReads Paired\t% Reads Paired\tOverall Alignment Rate\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 
-    # BEGIN aligning by index
-    foreach my $index (@indices)
+    # BEGIN aligning by sample
+    foreach my $sample (@samples)
     {
-        chomp($index);
-        $index =~ s/ //g;
+        chomp($sample);
+        $sample =~ s/ //g;
 
-        my $R1_trimmed = "$output_dir/trim/$index\_$sample\_R1-p.fastq";
-        my $R2_trimmed = "$output_dir/trim/$index\_$sample\_R2-p.fastq";
+        my $R1_trimmed = "$output_dir/trim/$sample\_$population\_R1-p.fastq";
+        my $R2_trimmed = "$output_dir/trim/$sample\_$population\_R2-p.fastq";
 
         unless ( -f $R1_trimmed && -r $R1_trimmed )
         {   die "ERROR: $R1_trimmed does not exist or is unreadable.\n"; }
@@ -136,12 +136,12 @@ sub f3
         if(@bowtie2_options)    # Run with custom paramaters
         {
             $cmd = "$bowtie2_dir/bowtie2 --no-sq --no-head @bowtie2_options ";
-            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$index\_$sample.sam";
+            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$sample\_$population.sam";
         } else                  # Run with default parameters
         {
             $cmd = "$bowtie2_dir/bowtie2 --end-to-end --no-mixed --no-discordant --no-sq --no-head ";
             $cmd .= "-k $max_valid_alignments -X $max_fragment_length -R $max_reseed_rate -p $num_threads ";
-            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$index\_$sample.sam";
+            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$sample\_$population.sam";
         }
 
         ############## SEQUENTIAL RUN ###############
@@ -152,7 +152,7 @@ sub f3
         if ($success)
         {
             # Create a log documenting alignment stats
-            my $alignlog = "logs/$index\_$sample\_bowtie2_output.log";
+            my $alignlog = "logs/$sample\_$population\_bowtie2_output.log";
             open ALIGNLOG, ">$alignlog" or die "ERROR: Unable to create log file $alignlog\n";
             print ALIGNLOG join " ", @$full_buf;
             close ALIGNLOG or die "ERROR: Unable to close log file $alignlog\n";
@@ -163,15 +163,15 @@ sub f3
         }
 
         # Summary of progress
-        $index_count++;
-        print_progress($index_count, $num_indices, "Current index: $index");
-        summarize_align($index, $sample, \@$stderr_buf);
+        $sample_count++;
+        print_progress($sample_count, $num_samples, "Current sample: $sample       ");
+        summarize_align($sample, $population, \@$stderr_buf);
         ##############################################
 
         ############## CONCURRENT RUN ################
         # The following code allows the individual bowtie2 commands to be run in the background,
         # effectively aligning reads from all samples concurrently.
-        #my $alignlog = "logs/$index\_$sample\_bowtie2_output.log";
+        #my $alignlog = "logs/$sample\_$population\_bowtie2_output.log";
         #system("$cmd 2>$alignlog &");
         ##############################################
     }
@@ -183,14 +183,15 @@ sub f3
 
 ##############################
 ##### Summarize step 3
-##### Index     # of reads aligned  % of reads aligned
+##### Sample     # of reads aligned  % of reads aligned
 ##############################
+# TODO: Needs more flexibility to handle different bowtie2 versions :-(
 sub summarize_align
 {
-    my $index = $_[0];
-    my $sample = $_[1];
+    my $sample = $_[0];
+    my $population = $_[1];
     my @bowtie2_output = @{$_[2]};
-    print join " ", @bowtie2_output;
+    #print join " ", @bowtie2_output;
 
     # All the info is in the first array element, so just store it as a string
     # such that it can be split up into pieces
@@ -212,9 +213,9 @@ sub summarize_align
     $align_info[$#align_info] =~ /(\d+\.\d+\s?%) overall alignment rate/;
     my $overall_alignment = $1;
 
-    my $summary_file = "summary_files/$sample\_align\_summary.txt";
+    my $summary_file = "summary_files/$population\_align\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "$index\t$input_reads\t$unique_reads\t$percent_unique\t$overall_alignment\n";
+    print SUMMARY "$sample\t$input_reads\t$unique_reads\t$percent_unique\t$overall_alignment\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 

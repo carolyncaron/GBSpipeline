@@ -3,13 +3,13 @@
 ##### GBS_Pipeline.pl - a multi-step pipeline for GBS analysis #####
 ##### Usage: ./GBS_Pipeline.pl [function] [arg1] [arg2] ...
 ##### Functions:
-#####   function1 sample_name barcode_file re_site read1_file read2_file output_dir
+#####   function1 population barcode_file re_site read1_file read2_file output_dir
 #####   function2 trimmomatic_path trim_file
 #####   function3 bowtie2_dir reference_genome [-- options]
-#####   function4 samtools_dir
+#####   function4 samtools_dir bcftools_dir
 ##### Requirements:
 #####   Trimmomatic (v0.17-0.33), Bowtie2 (v2.x.x), SAMtools (v1.x), BCFtools (v1.x)
-#####   A file listing barcodes (indices) for demultiplexing
+#####   A file listing barcodes (indices) for demultiplexing (optionally, each barcode associated with a sample name)
 #####   Paired read data in separate FASTQ files (R1 reads and R2 reads)
 #####   A file containing adaptor and other sequences for trimming purposes
 #####   A FASTA file containing the reference genome
@@ -44,22 +44,31 @@ where outputs from each step are placed (with the exception of summary files).
 
 =over 6
 
-=item B<demultiplex> sample_name F<barcode_file> re_site F<read1_file read2_file>
+=item B<demultiplex> population F<index_file> re_site F<read1_file read2_file>
 
-Demultiplex reads based on a barcode file (provided by Illumina to distinguish samples
-used in sequencing).
+Demultiplex reads based on a index file.
 
-sample_name can be any name assigned to the reads, to be used in naming output files.
-Avoid use of whitespace (Ex: lens culinaris => lens_culinaris)
+population can be any generic name to represent this GBS run. It is only used in the
+naming of output files. Avoid use of whitespace! (Ex: lens culinaris => lens_culinaris)
 
-re_site is the rare-cutter restriction enzyme site used in the GBS protocol
+The index file is a simple text file and can have one of two formats. Either it is a single
+column list of the indices used for this GBS run, or it consists of 2 tab-delimited columns:
+- The first column contains the sample names
+- The second column consists of the index that is associated with the sample name in the
+  first column.
+Either format provides enough information for the pipeline to demultiplex the read files,
+however it recommended to use the second format as the output files will be named using
+the sample names rather than the indices, which is far more useful to the user.
+
+re_site is the rare-cutter restriction enzyme site used in the GBS protocol (2-enzyme GBS
+only)
 
 read1_file and read2_file should be provided in FASTQ format version Illumina 1.8+
 
 output_dir is a user-specified directory for placement of processed reads. This can be
 beneficial when running analysis on a machine or server where space is limited, since
 very large files can be directed to a separate storage unit or location. The user can
-specify . when wanting to use the current working directory.
+specify "." when wanting to use the current working directory.
 
 =item B<trim_reads> F<trimmomatic_path trim_file> [options]
 
@@ -76,10 +85,11 @@ FASTA format which are desired to be trimmed from the raw reads.
 
 Keep in mind that some output from the previous step (demultiplexing reads) is also needed
 as input into the trimming step. The input files are expected in the current working directory
-with the following formats: index_samplename_R1-clip.fastq and index_samplename_R2.fastq
+with the following formats: sample_population_R1.fastq and sample_population_R2.fastq
 
-The following parameters are given to trimmomatic as defaults, but may be altered as command-
-line options. Refer to the manual for trimmomatic for full option descriptions.
+The following parameters are given to trimmomatic as defaults, but may be altered in the
+code manually (see file: GBS_function2.pl). Refer to the manual for trimmomatic for full
+option descriptions.
 
 Options:
     -seed_mismatches [2]
@@ -167,8 +177,8 @@ viewed using the samtools tview command. Additionally, genotype likelihoods are 
 output in binary call format (bcf) and variant call format (vcf), which can be viewed with the
 bcftools view command.
 
-samtools_dir is the location of the user's version of SAMtools and should contain both samtools
-and bcftools.
+samtools_dir is the location of the user's copy of SAMtools (v1.0+)
+bcftools_dir is the location of the user's copy of bcftools (v1.0+)
 
 =back
 
@@ -176,21 +186,21 @@ and bcftools.
 
 =over 5
 
-=item F<samplename_demultiplex_summary.txt>
+=item F<population_demultiplex_summary.txt>
 
- Provides an overview of demultiplexing raw reads.
+ Provides an overview of demultiplexing the raw reads.
 
- Barcode: The barcode associated with this set of reads
+ Sample: The sample name OR the barcode used to distinguish this sample
  Read1 count: The number of R1 reads that contained the barcode
  % of Raw Read1: The % of raw R1 reads that contained the barcode
  Read2 count: The number of R2 reads that contained the barcode
  $ of Raw Read2: The % of raw R2 reads that contained the barcode
 
-=item F<samplename_trim_summary.txt>
+=item F<population_trim_summary.txt>
 
- Provides an overview of trimming demultiplexed reads.
+ Provides an overview of trimming the demultiplexed reads.
 
- Index: The index used to identify a sample's set of reads
+ Sample: The sample name OR the index used to distinguish this sample
  Input Read Pairs: The number of paired-end reads prior to trimming
  Surviving Read Pairs: The number of reads where both pairs survived
  % Both Surviving: The % of both paired reads surviving
@@ -204,11 +214,11 @@ and bcftools.
     low quality
  % Dropped: The % of reads dropped
 
-=item F<samplename_align_summary.txt>
+=item F<population_align_summary.txt>
 
  Provides an overview of the alignment of reads to a reference genome.
 
- Index: The index used to identify a sample's set of reads
+ Sample: The sample name OR the index used to distinguish this sample
  Input Reads: Number of reads when the alignment began
  Reads Paired: Number of reads that were aligned along with their
     paired read
@@ -233,6 +243,7 @@ use Time::HiRes;
 use FindBin qw($Bin);
 use IPC::Cmd qw[run];
 use Pod::Usage;
+use Data::Dumper;
 
 #######################
 ##### CONFIG FILE #####
@@ -317,11 +328,11 @@ if ( exists ( $ARGV[0] ) )
             unless ($num_args == 6)
             {
                 print "ERROR: Unexpected number of parameters given ($num_args). Program will exit.\n";
-                die "--Try: Perl GBS_pipeline.pl $FUNCTION sample_name index_file re_site ",
+                die "--Try: Perl GBS_pipeline.pl $FUNCTION population index_file re_site ",
                     "/path/to/file1/filename1.fastq /path/to/file2/filename2.fastq /path/to/reads/\n";
             }
 
-            my $sample = $args[0];
+            my $population = $args[0];
             my $index_file = $args[1];
             my $RE_site = $args[2];
             my $R1_file = $args[3];
@@ -333,11 +344,11 @@ if ( exists ( $ARGV[0] ) )
             print "Calling $FUNCTION ...\n";
 
             require "$Bin/GBS_function1.pl";
-            function1($sample, $index_file, $RE_site, $R1_file, $R2_file, $output_dir);
+            function1($population, $index_file, $RE_site, $R1_file, $R2_file, $output_dir);
             print "Completed $FUNCTION.\n";
 
             # Save the sample and index file into the configuration file
-            add_to_config("SAMPLE", $sample, "The generic sample name used in naming files during processing");
+            add_to_config("POPULATION", $population, "The generic name used for this population");
             add_to_config("INDEX_FILE", $index_file, "The filename of the list of indices (aka barcodes)");
             add_to_config("READS_DIR", $output_dir, "The location where output of processed reads are placed");
 
@@ -354,8 +365,8 @@ if ( exists ( $ARGV[0] ) )
             my $trimmomatic_path = $args[0];
             my $trim_file = $args[1];
 
-            # Extract sample name, indices and output directory from the config file
-            chomp(my $sample = `grep 'SAMPLE' $CONFIG_FILE | cut -d'=' -f2`);
+            # Extract population, indices and output directory from the config file
+            chomp(my $population = `grep 'POPULATION' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $index_file = `grep 'INDEX_FILE' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $output_dir = `grep 'READS_DIR' $CONFIG_FILE | cut -d'=' -f2`);
 
@@ -364,7 +375,7 @@ if ( exists ( $ARGV[0] ) )
 
             print "Calling $FUNCTION ...\n";
             require "$Bin/GBS_function2.pl";
-            f2($trimmomatic_path, $trim_file, $sample, $index_file, $output_dir);
+            f2($trimmomatic_path, $trim_file, $population, $index_file, $output_dir);
             print "Completed $FUNCTION.\n";
         }
         when ( /function3/ || /f3/ || /align_reads/ )
@@ -381,8 +392,8 @@ if ( exists ( $ARGV[0] ) )
             # Shift @args array twice to remove first 2 required parameters
             shift @args; shift @args;
 
-            # Extract sample name and indices from the config file
-            chomp(my $sample = `grep 'SAMPLE' $CONFIG_FILE | cut -d'=' -f2`);
+            # Extract population and indices from the config file
+            chomp(my $population = `grep 'POPULATION' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $index_file = `grep 'INDEX_FILE' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $output_dir = `grep 'READS_DIR' $CONFIG_FILE | cut -d'=' -f2`);
 
@@ -390,7 +401,7 @@ if ( exists ( $ARGV[0] ) )
             require "$Bin/GBS_function3.pl";
 
             # Give the subroutine the remaining args (for bowtie2) as an array reference
-            f3($bowtie2_dir, $reference_genome, $sample, $index_file, $output_dir, \@args);
+            f3($bowtie2_dir, $reference_genome, $population, $index_file, $output_dir, \@args);
             print "Completed $FUNCTION.\n";
 
             add_to_config("REFERENCE",$reference_genome,"The pathname of the reference genome sequence.");
@@ -407,14 +418,14 @@ if ( exists ( $ARGV[0] ) )
             my $bcftools_dir = $args[1];
 
             # Extract sample name/indices/reference genome from the config file
-            chomp(my $sample = `grep 'SAMPLE' $CONFIG_FILE | cut -d'=' -f2`);
+            chomp(my $population = `grep 'POPULATION' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $index_file = `grep 'INDEX_FILE' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $output_dir = `grep 'READS_DIR' $CONFIG_FILE | cut -d'=' -f2`);
             chomp(my $reference_genome = `grep 'REFERENCE' $CONFIG_FILE | cut -d'=' -f2`);
 
             print "Calling $FUNCTION ...\n";
             require "$Bin/GBS_function4.pl";
-            f4($samtools_dir, $bcftools_dir, $sample, $index_file, $output_dir, $reference_genome);
+            f4($samtools_dir, $bcftools_dir, $population, $index_file, $output_dir, $reference_genome);
             print "Completed $FUNCTION.\n";
         }
         default

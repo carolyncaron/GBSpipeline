@@ -6,12 +6,12 @@
 #####   samtools_dir - location of user's copy of samtools
 #####   bcftools_dir - location of user's copy of bcftools
 ##### Output:
-#####   $output_dir/align/$index_$sample_mapped.sam
-#####   $output_dir/align/$index_$sample_mapped.sorted.sam
-#####   $output_dir/align/$index_$sample_mapped.bam
-#####   $output_dir/align/$index_$sample_mapped.sorted.bam
-#####   $output_dir/variants/$index_$sample_mapped.bcf
-#####   $output_dir/variants/$index_$sample_mapped.vcf
+#####   $output_dir/align/$sample_$population_mapped.sam
+#####   $output_dir/align/$sample_$population_mapped.sorted.sam
+#####   $output_dir/align/$sample_$population_mapped.bam
+#####   $output_dir/align/$sample_$population_mapped.sorted.bam
+#####   $output_dir/variants/$sample_$population_mapped.bcf
+#####   $output_dir/variants/$sample_$population_mapped.vcf
 
 use strict;
 use warnings;
@@ -21,7 +21,7 @@ sub f4
     # Collect function-specific parameters
     my $samtools_dir = $_[0];
     my $bcftools_dir = $_[1];
-    my $sample = $_[2];
+    my $population = $_[2];
     my $index_file = $_[3];
     my $output_dir = $_[4];
     my $reference_genome = $_[5];
@@ -45,82 +45,82 @@ sub f4
 
     system("mkdir -p $output_dir/variants/");
 
-    my @indices = `cat $index_file`;
-    my $num_indices = $#indices + 1;
-    print "My num indices: $num_indices\n";
-    if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
-    my $index_count = 0;
-    print_progress($index_count, $num_indices, " Filtering multi-mapped reads");
+    my @samples = `cut -f1 $index_file`;
+    my $num_samples = $#samples + 1;
+    if ($num_samples == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+    my $sample_count = 0;
+    print_progress($sample_count, $num_samples, " Filtering multi-mapped reads");
 
     # BEGIN SNP calling
-    foreach my $index (@indices)
+    foreach my $sample (@samples)
     {
-        # Eight steps per index... break it down so progress bar reports more often
-        my $num_steps = $index_count*6;
-        my $total_steps = $num_indices*6;
-        chomp($index);
-        $index =~ s/ //g;
-        my $sam_file = "$output_dir/align/$index\_$sample.sam";
+        # Eight steps per sample... break it down so progress bar reports more often
+        my $num_steps = $sample_count*6;
+        my $total_steps = $num_samples*6;
+        chomp($sample);
+        $sample =~ s/ //g;
+        my $sam_file = "$output_dir/align/$sample\_$population.sam";
 
         # a. Filter alignments in which reads multi-mapped for the best hits
-        my $besthits_log = "logs/$index\_$sample\_multimap_processing.log";
-        bwt2_besthits($sam_file, "$output_dir/align/$index\_$sample\_besthits.sam", $besthits_log);
+        my $besthits_log = "logs/$sample\_$population\_multimap_processing.log";
+        bwt2_besthits($sam_file, "$output_dir/align/$sample\_$population\_besthits.sam", $besthits_log);
         $num_steps++;
         print_progress($num_steps, $total_steps, " Filtering non-aligned reads ");
 
         # b. Filter out sequences which did not align to save space
+        # @TODO
         my $cmd = "$samtools_dir/samtools view F 4 -T $reference_genome ";
-        $cmd .= "$output_dir/align/$index\_$sample\_besthits.sam > ";
-        $cmd .= "$output_dir/align/$index\_$sample\_mapped.sam";
+        $cmd .= "$output_dir/align/$sample\_$population\_besthits.sam > ";
+        $cmd .= "$output_dir/align/$sample\_$population\_mapped.sam";
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Could not filter $output_dir/align/$index\_$sample\_besthits.sam \
+        {   die "ERROR: Could not filter $output_dir/align/$sample\_$population\_besthits.sam \
                  for unmapped reads:\n$error_message\n@$stderr_buf";   }
         $num_steps++;
         print_progress($num_steps, $total_steps, " Sorting SAM                 ");
 
         # c. Sort sam files so they can be indexed when converted to BAM
-        $cmd = "sort -k3,3 -k4,4n $output_dir/align/$index\_$sample\_mapped.sam > ";
-        $cmd .= "$output_dir/align/$index\_$sample\_mapped.sorted.sam";
+        $cmd = "sort -k3,3 -k4,4n $output_dir/align/$sample\_$population\_mapped.sam > ";
+        $cmd .= "$output_dir/align/$sample\_$population\_mapped.sorted.sam";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Could not sort $index\_$sample\_mapped.sam: $error_message\n@$stderr_buf";   }
+        {   die "ERROR: Could not sort $sample\_$population\_mapped.sam: $error_message\n@$stderr_buf";   }
         $num_steps++;
         print_progress($num_steps, $total_steps, " Converting to BAM");
 
         # d. Convert to BAM format (Creates .fai files from the reference genome then BAM)
         $cmd = "$samtools_dir/samtools view -bT $reference_genome ";
-        $cmd .= "$output_dir/align/$index\_$sample\_mapped.sorted.sam ";
-        $cmd .= "> $output_dir/align/$index\_$sample\_mapped.bam";
+        $cmd .= "$output_dir/align/$sample\_$population\_mapped.sorted.sam ";
+        $cmd .= "> $output_dir/align/$sample\_$population\_mapped.bam";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to convert $index\_$sample\_mapped.sorted.sam to BAM format: \
+        {   die "ERROR: Failed to convert $sample\_$population\_mapped.sorted.sam to BAM format: \
                  $error_message\n@$stderr_buf";   }
         $num_steps++;
         print_progress($num_steps, $total_steps, " Sorting BAM      ");
 
         # e. Sort BAM
-        $cmd = "$samtools_dir/samtools sort $output_dir/align/$index\_$sample\_mapped.bam ";
-        $cmd .= "$output_dir/align/$index\_$sample\_mapped.sorted";
+        $cmd = "$samtools_dir/samtools sort $output_dir/align/$sample\_$population\_mapped.bam ";
+        $cmd .= "$output_dir/align/$sample\_$population\_mapped.sorted";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to sort $index\_$sample\_mapped.bam: $error_message\n@$stderr_buf";   }
+        {   die "ERROR: Failed to sort $sample\_$population\_mapped.bam: $error_message\n@$stderr_buf";   }
         $num_steps++;
         print_progress($num_steps, $total_steps, "Indexing BAM");
 
         # f. Index BAM
-        $cmd = "$samtools_dir/samtools index $output_dir/align/$index\_$sample\_mapped.sorted.bam";
+        $cmd = "$samtools_dir/samtools index $output_dir/align/$sample\_$population\_mapped.sorted.bam";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to index $index\_$sample\_mapped.sorted.bam: $error_message\n@$stderr_buf";   }
+        {   die "ERROR: Failed to index $sample\_$population\_mapped.sorted.bam: $error_message\n@$stderr_buf";   }
         $num_steps++;
         print_progress($num_steps, $total_steps, " Identifying variants");
 
         # g. Identify genomic variants using mpileup
         ### Since version 1.0: -D deprecated, use -t DP instead
         $cmd = "$samtools_dir/samtools mpileup -f $reference_genome -g -I -B -t DP ";
-        $cmd .= "$output_dir/align/$index\_$sample\_mapped.sorted.bam > ";
-        $cmd .= "$output_dir/variants/$index\_$sample\_mapped.bcf";
+        $cmd .= "$output_dir/align/$sample\_$population\_mapped.sorted.bam > ";
+        $cmd .= "$output_dir/variants/$sample\_$population\_mapped.bcf";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to identify genomic variants with mpileup: $error_message\n@$stderr_buf";   }
@@ -129,17 +129,17 @@ sub f4
 
         # h. Use bcftools to call SNPs using bcf files
         ### Parameters prior to 1.0: -c -g -I -v
-        $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $output_dir/variants/$index\_$sample\_mapped.bcf > ";
-        $cmd .= "$output_dir/variants/$index\_$sample\_mapped.vcf";
+        $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $output_dir/variants/$sample\_$population\_mapped.bcf > ";
+        $cmd .= "$output_dir/variants/$sample\_$population\_mapped.vcf";
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
         $num_steps++;
 
         # Summary of progress
-        $index_count++;
-        print_progress($num_steps, $total_steps, "Completed index $index");
-        #summarize_SNPcall($index, $sample);
+        $sample_count++;
+        print_progress($num_steps, $total_steps, "Completed sample $sample       ");
+        #summarize_SNPcall($sample, $population);
     }
 
     # @TODO: Merge mpileup results into a single file
