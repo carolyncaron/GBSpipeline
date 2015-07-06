@@ -41,14 +41,14 @@
 
 <p>Download link: <a href="http://www.usadellab.org/cms/?page=trimmomatic">http://www.usadellab.org/cms/?page=trimmomatic</a></p>
 
-<p>I recommend downloading the binary as there is no compiling from source code; just simply place the "trimmomatic-[version].jar file into the directory of your choice. It is also worth reading up on trimmomatic on how it trims paired-end reads, especially the options you can provide it, as you can use it to tweak the default options in the pipeline.</p>
+<p>I recommend downloading the binary as there is no compiling from source code; just simply place the "trimmomatic-[version].jar file into the directory of your choice. It is also worth reading up on trimmomatic on how it trims paired-end reads, especially the options you can provide it, as you can use it to tweak the default options in the pipeline if necessary.</p>
 
 <h3>
 <a id="2-bowtie2" class="anchor" href="#2-bowtie2" aria-hidden="true"><span class="octicon octicon-link"></span></a>2. bowtie2</h3>
 
 <p>Download link: <a href="http://sourceforge.net/projects/bowtie-bio/files/bowtie2/2.2.3/">http://sourceforge.net/projects/bowtie-bio/files/bowtie2/2.2.3/</a></p>
 
-<p>Ensure you choose the right binary for your operating system (either Linux or MacOS) and again, simply place the folder into your desired directory. If you would rather compile from source, the instructions are in the bowtie2 manual at: <a href="http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml">http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml</a>. This is also where you'll find the various options when running bowtie2, which can also be passed into the pipeline.</p>
+<p>Ensure you choose the right binary for your operating system (either Linux or MacOS) and again, simply place the folder into your desired directory. If you would rather compile from source, the instructions are in the bowtie2 manual at: <a href="http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml">http://bowtie-bio.sourceforge.net/bowtie2/manual.shtml</a>. This is also where you'll find the various options when running bowtie2, which can be passed into the pipeline.</p>
 
 <h3>
 <a id="3-samtools-and-bcftools" class="anchor" href="#3-samtools-and-bcftools" aria-hidden="true"><span class="octicon octicon-link"></span></a>3. SAMtools and BCFtools</h3>
@@ -65,11 +65,11 @@
 
 <p>and similarly for BCFtools in the directory you unpacked it:</p>
 
-<p><code>cd bcftools-1.2/</code><br>
+<p><code>cd bcftools-1.x/</code><br>
 <code>make</code><br>
 <code>make prefix=. install</code>  </p>
 
-<p>You should see some output telling you that it compiled successfully (hopefully! See SAMtools documentation for help). For a great tutorial on how to use SAMtools (though it won't be necessary to use this pipeline, but it is a great package for handling copious amounts of sequence data), I highly recommend this tutorial: <a href="http://biobits.org/samtools_primer.html">http://biobits.org/samtools_primer.html</a></p>
+<p>You should see some output telling you that it compiled successfully (hopefully!). For a great tutorial on how to use SAMtools (though it won't be necessary to use this pipeline, but it is a great package for handling copious amounts of sequence data), I highly recommend this tutorial: <a href="http://biobits.org/samtools_primer.html">http://biobits.org/samtools_primer.html</a></p>
 
 <h1>
 <a id="download" class="anchor" href="#download" aria-hidden="true"><span class="octicon octicon-link"></span></a>Download</h1>
@@ -78,16 +78,20 @@
 
 <p><code>git clone https://github.com/carolyncaron/GBSpipeline.git</code></p>
 
-<p>Alternatively, if you don't have git installed, you can download the zip file on this site and place it into the directory of your choice as with the previous dependencies. Once you have the GBS pipeline in its own directory, it is time to copy the required files to the same directory. Again, if you choose not to copy all of these files (for memory-saving reasons), just remember to use the pathname for each as parameters when using the pipeline.
+<p>Alternatively, if you don't have git installed, you can download the zip file on this site and place it into the directory of your choice as with the previous dependencies. Once you have the GBS pipeline in its own directory, it is time to copy the following files into the same directory. Again, if you choose not to copy all of these files (for memory-saving reasons), just remember to use the pathname for each as parameters when using the pipeline.
 The following files are required:</p>
 
 <ul>
-<li>A barcode file - This should be provided by Illumina as a list of short nucleotide sequences. Each sample was given a "barcode" to distinguish its sequences from other samples, thus each sequence begins with a barcode.</li>
-<li>Two FASTQ files containing paired-end read data - also provided by Illumina, their version needs to be 1.8 or higher. Each read in the first file is paired with a read in the second file. Only the first set of reads contain the barcodes, so it is important to list this file before the second file when telling the pipeline where to find the reads. </li>
-<li>A trim file - A FASTA file of adaptors that trimmomatic will use to trim from the reads. This is likely also provided by Illumina. Your download of trimmomatic will also include various files that you can use as your trim file (see the <a href="http://www.usadellab.org/cms/?page=trimmomatic">manual page</a> for Trimmomatic).</li>
+<li>An index file - A simple text file in one of two formats. Either 1) A single column list of the indices used for this GBS run, or 2) 2 tab-delimited columns where the first consists of the sample name and the second consists of its associated index. (Either format provides enough information for the pipeline to demultiplex the reads,
+however it is recommended to use the second format as the output files will be named using
+the sample names rather than the indices, which is far more useful to the user.)</li>
+<li>Two FASTQ files containing paired-end read data - these need to be Illumina version 1.8 or higher. Each read in the first file is paired with a read in the second file. Only the first set of reads contain the indices, so it is important to list this file before the file containing the second set of reads when giving the pipeline parameters. </li>
+<li>A trim file - A FASTA file of adaptors that trimmomatic will use to trim from the reads. This is likely provided by your sequencing provider. Your download of trimmomatic will also include various files that you can use as your trim file (see the <a href="http://www.usadellab.org/cms/?page=trimmomatic">manual page</a> for Trimmomatic).</li>
 <li>A reference genome in FASTA format</li>
-<li>Reference genome index files (optional). These should have the same name as the reference genome but with suffixes such as 1.bt2, 2.bt2 and so on. The pipeline will look for these in the same directory as the reference genome, but if they are not present, the pipeline will create them. </li>
+<li>Reference genome index files (optional). These should have the same name as the reference genome but with suffixes such as 1.bt2, 2.bt2 and so on. The pipeline will look for these in the same directory as the reference genome, but if they are not present, then they will be generated. </li>
 </ul>
+
+<p>You are now ready to begin analyzing your GBS data!</p>
 
 <h1>
 <a id="approach" class="anchor" href="#approach" aria-hidden="true"><span class="octicon octicon-link"></span></a>Approach</h1>
@@ -99,23 +103,23 @@ The following lists examples to demonstrate how to run each step in sequential o
 
 <ol>
 <li><p>The first step is to demultiplex the reads into separate files for each sample. For example, suppose we are doing a run with Medicago samples:<br>
-<code>./GBS_pipeline.pl demultiplex Medicago barcodes.list TGCA Mt4.0_read1.fastq Mt4.0_read2.fastq GBS_test</code><br>
-You should see printed to the console something like (give it some time to complete!):<br>
+<code>./GBS_pipeline.pl demultiplex Medicago indices.list TGCA Mt4.0_read1.fastq Mt4.0_read2.fastq Medicago_GBS</code><br>
+When completed, you should see printed to the console something like:<br>
 <code>Calling demultiplex …</code><br>
-<code>Demultiplexed barcode CTCCTGCA [1/3]</code><br>
-<code>Demultiplexed barcode TGCATGCA [2/3]</code><br>
-<code>Demultiplexed barcode ACTATGCA [3/3]</code><br>
-<code>Placing reads without an barcode into a separate file…</code><br>
-<code>R1 reads without an index placed in unindexed_Medicago_R1.fastq</code><br>
-<code>R2 reads without an index placed in unindexed_Medicago_R2.fastq</code><br>
+<code>[===========================] 100 %</code>
+<code>Handling reads without a barcode...</code><br>
+<code>Processed reads located in:</code><br>
+<code>Medicago_GBS/demultiplex/</code><br>
+<code>Summary (open in Excel or use command more): summary_files/Medicago_demultiplex_summary.txt</code><br>
 <code>Completed demultiplex.</code>  </p></li>
-<li><p>When the first step has completed, next we trim the files for quality and adaptor sequences. Continuing with our example:<br>
+<li><p>Next we trim the files for quality and adaptor sequences. Continuing with our example:<br>
 <code>./GBS_pipeline.pl trim_reads Trimmomatic-0.32/trimmomatic-0.32.jar trimlist.fa</code><br>
 And the following is printed to the console:<br>
 <code>Calling trim_reads …</code><br>
-<code>Trimmomatic successfully finished trimming CTCCTGCA indexed reads.</code><br>
-<code>Trimmomatic successfully finished trimming TGCATGCA indexed reads.</code><br>
-<code>Trimmomatic successfully finished trimming ACTATGCA indexed reads.</code><br>
+<code>[==========================] 100 %</code><br>
+<code>Processed reads located in:</code><br>
+<code>Medicago_GBS/trim/</code><br>
+<code>Summary (open in Excel or use command more): summary_files/Medicago_trim_summary.txt</code><br>
 <code>Completed trim_reads.</code>  </p></li>
 <li><p>This step aligns the reads to the reference genome, and is most likely to take the longest time to complete:<br>
 <code>./GBS_pipeline.pl align_reads ../../Tools/bowtie2-2.2.1 ../Mt4.0_reference.fna</code><br>
@@ -123,32 +127,23 @@ With the following output:<br>
 <code>Calling align_reads …</code><br>
 <code>Reference genome index files present, proceeding to make alignments.</code><br>
 <code>Running bowtie2 with the following parameters:</code><br>
-<code>--end-to-end --no-mixed --no-discordant --no-sq --no-hd -k 1 -X 11000 -R 5 -p 4</code><br>
-<code>Completed alignments for index CTCCTGCA</code><br>
-<code>Completed alignments for index TGCATGCA</code><br>
-<code>Completed alignments for index ACTATGCA</code><br>
+<code>--end-to-end --no-mixed --no-discordant --no-sq --no-hd -k 3 -X 11000 -R 5 -p 1</code><br>
+<code>[==========================] 100 %</code><br>
+<code>Processed reads located in:</code><br>
+<code>Medicago_GBS/align/</code><br>
+<code>Summary (open in Excel or use command more): summary_files/Medicago_trim_summary.txt</code><br>
 <code>Completed align_reads.</code>  </p></li>
 <li><p>The final step is making variant calls using the alignment:<br>
 <code>./GBS_pipeline.pl SNP_calling ../../Tools/samtools-0.1.19/</code><br>
 With output such as:<br>
 <code>Calling SNP_calling …</code><br>
-<code>Index CTCCTGCA files converted from .sam to .bam</code><br>
-<code>Completed variant calls for index CTCCTGCA</code><br>
-<code>Index TGCATGCA files converted from .sam to .bam</code><br>
-<code>Completed variant calls for index TGCATGCA</code><br>
-<code>Index ACTATGCA files converted from .sam to .bam</code><br>
-<code>Completed variant calls for index ACTATGCA</code><br>
-<code>Completed SNP_calling.</code></p></li>
+<code>[==========================] 100 %</code><br>
+<code>Processed reads located in:</code><br>
+<code>Medicago_GBS/variants/</code><br>
+<code>Completed SNP_calling.</code>  </p></li>
 </ol>
 
-<p>That's it! Take a look at your directory using the command <code>ls</code>. You should see your output files from each step (indexed reads, trimmed reads, alignments, and vcf files) neatly organized into directories called <code>demultiplex/ trim/ align/ variants/</code>, respectively.  Additionally, you should see all of your summary files, which can be opened in a plain text editor or in Excel. </p>
-
-<h1>
-<a id="documentation" class="anchor" href="#documentation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Documentation</h1>
-
-<p>To access the full documentation for the pipeline, go to: <a href="https://github.com/carolyncaron/GBSpipeline/wiki/GBS-pipeline-POD">https://github.com/carolyncaron/GBSpipeline/wiki/GBS-pipeline-POD</a></p>
-
-<p>The POD can also be accessed on the command line by running: <code>perldoc GBS_pipeline.pl</code></p>
+<p>That's it! Take a look at your directory using the command <code>ls</code>. You should see your output files from each step (indexed reads, trimmed reads, alignments, and vcf files) neatly organized into directories called <code>demultiplex/ trim/ align/ variants/</code>, respectively.  Additionally, you should see all of your summary files, which can be opened in a plain text editor or in Excel. More information on the summary files can be found at the end of the <a href="https://github.com/carolyncaron/GBSpipeline/wiki/GBS-pipeline-POD">POD page</a>.</p>
       </section>
     </div>
 
@@ -156,7 +151,7 @@ With output such as:<br>
     <div id="footer_wrap" class="outer">
       <footer class="inner">
         <p class="copyright">GBS Pipeline maintained by <a href="https://github.com/carolyncaron">carolyncaron</a></p>
-        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+        <p>Published with <a href="https://pages.github.com">GitHub Pages</a></p>
       </footer>
     </div>
 
