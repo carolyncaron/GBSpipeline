@@ -71,58 +71,53 @@ sub function1
     # Check that the index_file is valid. Either:
     # 1. It just contains the barcodes, each on its own line (1 column)
     # 2. Each line contains the name of the population followed by the barcode (tab delimited thus 2 columns)
-    open (INDICES, $index_file) or die "ERROR: Unable to open $index_file.\n";
-    # Create array for just indices
-    #my @indices;
-
     my %samples = ();
+    my ( $sname, $barcode );
+    my $num_indices = 0;
 
+    open (INDICES, $index_file) or die "ERROR: Unable to open $index_file.\n";
     my $first_line = <INDICES>;
     chomp $first_line;
     my @columns = split(/\t/, $first_line);
     my $num_col = ($#columns)+1;
     if ($num_col > 2) { die "ERROR: Unexpected number of columns in $index_file: $num_col \n"; }
-    if ($num_col == 2)
+    # Since we already looked at the first line, add its contents to the array of indices and samples hash,
+    # then iterate over the remainder of the file
+    elsif ($num_col == 2)
     {
-        # Create an array for just sample names
-        #my %samples = ();
         unless ( $columns[1] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
-        # Since we already looked at the first line, add its contents to the array of indices and samples hash,
-        # then iterate over the remainder of the file
-        #push (@indices, $columns[1]);
         push @{ $samples{ $columns[0] }}, $columns[1];
-        while (<INDICES>)
-        {
-            chomp;
-            my ($sname, $barcode) = split (/\t/, $_);
-            #push @indices, $barcode;
-            # Remove whitespace
-            $sname =~ s/ //g;
-            #@TODO: If a barcode is duplicated for a sample (sadly I've run into this), ensure it isn't added to the hash twice
-            push @{ $samples{ $sname }}, $barcode;
-            #push @samples, $sname;
-        }
-        #print Dumper(\%samples);
-
-    } else # 1 column index file = just indices
+        $num_indices++;
+    }
+    elsif ($num_col == 1)
     {
+        unless ( $columns[0] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
         push @{ $samples{ $columns[0] }}, $columns[0];
-        while (<INDICES>)
-        {
-            chomp($_);
-            my $barcode = $_;
-            $barcode =~ s/ //g;
-            push @{ $samples{ $barcode }}, $barcode;
-        }
-        #print Dumper(\%samples);
+        $num_indices++;
+    }
+    else {  die "ERROR: $index_file appears to be empty.\n";  }
 
-        #@indices = `cat $index_file`;
-        #unless ( $indices[0] !~ /(ATGCN)/i ) { die "ERROR: Indices must contain only nucleotides [ACGTN].\n"; }
+    # The first index is inserted into the %samples hash, now enter the remainder.
+    # Key -> sample, Value -> index (sample = index if single column file was provided)
+    while (<INDICES>)
+    {
+        chomp;
+        if ($num_col == 2)
+        {   ($sname, $barcode) = split (/\t/, $_); }
+        else
+        {    $sname = $_; $barcode = $sname;  }
+
+        # Remove whitespace
+        $sname =~ s/ //g;
+
+        #@TODO: If a barcode is duplicated for a sample (sadly I've run into this), ensure it isn't added to the hash twice
+        push @{ $samples{ $sname }}, $barcode;
+
+        $num_indices++;
     }
     close INDICES or die "ERROR: Unable to close $index_file\n";
-
-    my $num_indices = keys %samples;
     if ($num_indices == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
+
     # Start the progress bar since wc command can take a while depending on the file.
     my $index_count = 0;
     print_progress($index_count, $num_indices, "Counting reads...");
@@ -147,90 +142,89 @@ sub function1
     system("mkdir -p summary_files/");
     my $summary_file = "summary_files/$population\_demultiplex\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not create $summary_file\n";
-    print SUMMARY "Sample\tRead1 count\t%of Raw Read1\tRead2 count\t% of Raw Read2\n";
+    print SUMMARY "Sample\tRead1 count\t% of Raw Read1\tRead2 count\t% of Raw Read2\n";
     close SUMMARY or die "ERROR: Unable to close $summary_file\n";
 
-    #@TODO: Iterate through %samples
     # BEGIN demultiplexing
-    my ( $sname, $indices );
-    while ( ($sname, $indices) = each %samples )
+    my $sample;
+    foreach $sample ( sort keys %samples )
     {
-        foreach my $index (@$indices)
-        {
-            # Create files using the sample name in the filename
-            # If only barcodes were provided, these will be used to name the demultiplexed files
-            my $R1_tmp = "$output_dir/tmp/$sname\_$population\_R1.tmp";
-            my $R1_with_index = "$output_dir/tmp/$sname\_$population\_R1-unclipped.fastq";
-            my $R1_clipped = "$output_dir/demultiplex/$sname\_$population\_R1.fastq";
-            my $R1_headers = "$output_dir/tmp/$sname\_$population.list";
-            my $R2_matches = "$output_dir/demultiplex/$sname\_$population\_R2.fastq";
+        # Declare files for each sample which may need to be appended-to if there are
+        # multiple indices for this sample. Hence going through the trouble of making
+        # sure they're empty if the pipeline gets re-run...
+        my $R1_matches = "$output_dir/demultiplex/$sample\_$population\_R1.fastq";
+        my $R2_matches = "$output_dir/demultiplex/$sample\_$population\_R2.fastq";
 
-            # Five steps per index. Break it down so the progress bar reports more often.
-            my $num_steps = $index_count*5;
+        # Make sure we are starting with empty output files
+        my @output_files = ( "$R1_matches", "$R2_matches" );
+        foreach my $outfile (@output_files) { system(">$outfile");  }
+
+        # Reset R2 counter
+        $R2_count = 0;
+
+        # Iterate through each index for this sample
+        foreach my $index (@{ $samples{$sample} })
+        {
             chomp($index);
             $index =~ s/ //g;
 
-            ## a.
-            # Search R1 reads for each barcode at the start of the sequence,
-            # save to a temp file (-A 2 -B 1 options: include 2 lines after, 1 line before match)
-            system("zgrep -A 2 -B 1 ^$index $R1_file > $R1_tmp");
-            $num_steps++;
-            print_progress($num_steps, $num_indices*5, " Current sample: $sname");
+            # Create the index-specific files
+            my $R1_with_index = "$output_dir/tmp/$index\_$population\_R1-unclipped.fastq";
+            my $R1_clipped = "$output_dir/tmp/$index\_$population\_R1-clipped.fastq";
+            my $R1_headers = "$output_dir/tmp/$index\_$population.list";
 
-            ## b.
-            # Remove the "--" separator between each read in each temp file and save as a FASTQ file
-            system("grep -v ^- $R1_tmp > $R1_with_index");
-            $num_steps++;
-            print_progress($num_steps, $num_indices*5);
+            # Four steps per index. Break it down so the progress bar reports more often.
+            my $step_count = $index_count*4;
+            my $total_steps = $num_indices*4;
+            print_progress($step_count++, $total_steps, " Current sample: $sample        ");
 
-            ## c.
-            # Trim off barcodes from each read using the barcode length after accounting for the
-            # restriction site within the barcode
+            ## 1. Search R1 reads for each barcode at the start of the sequence
+            # (zgrep -A 2 -B 1 options: include 2 lines after, 1 line before match)
+            # Then remove the "--" separator between each read and save as a FASTQ file
+            system("zgrep -A 2 -B 1 ^$index $R1_file | grep -v ^- > $R1_with_index");
+            print_progress($step_count++, $total_steps);
+
+            ## 2.  Trim off barcodes from each read using the barcode length after accounting
+            # for the restriction site within the barcode
             my $clip = $index;
-            # $clip =~ s/$RE_site$//i;
+            $clip =~ s/$RE_site$//i;
             my $len = length($clip);
             open CLIPPED, ">$R1_clipped" or die "ERROR: Could not create $R1_clipped\n";
             select(CLIPPED);
-            fix_r1("$R1_with_index", $len);
+            fix_r1($R1_with_index, $len);
             #CLIPPED->flush();
             select(STDOUT);
             close CLIPPED or die "ERROR: Could not close $R1_clipped\n";
-            $num_steps++;
-            print_progress($num_steps, $num_indices*5);
+            system("cat $R1_clipped >> $R1_matches");
+            print_progress($step_count++, $total_steps);
 
-            ## d.
-            # Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
+            ## 3. Place FASTQ headers for clipped R1 reads into a separate barcode-specific file
             open HEADERS, ">$R1_headers" or die "ERROR: Could not create $R1_headers\n";
             select(HEADERS);
             get_id($R1_clipped);
             #HEADERS->flush();
             select(STDOUT);
             close HEADERS or die "ERROR: Could not close $R1_headers\n";
-            $num_steps++;
-            print_progress($num_steps, $num_indices*5);
+            print_progress($step_count++, $total_steps);
 
-            ## e.
-            # Use the FASTQ headers from R1 reads to extract R2 reads into index-specific files
-            open R2_READS, ">$R2_matches"
-                or die "ERROR: Could not create $R2_matches\n";
+            ## 4. Use the FASTQ headers from R1 reads to extract R2 reads into sample-specific files
+            open R2_READS, ">>$R2_matches" or die "ERROR: Could not create $R2_matches\n";
             select(R2_READS);
-            $R2_count = get_r2($R2_file, "$R1_headers");
+            $R2_count = ($R2_count + get_r2($R2_file, "$R1_headers"));
             #R2_READS->flush();
             select(STDOUT);
             close R2_READS or die "ERROR: Could not close $R2_matches\n";
-            $num_steps++;
-            print_progress($num_steps, $num_indices*5);
+            print_progress($step_count++, $total_steps, "                                ");
 
-            # Summary of progress
             $index_count++;
-            summarize_demultiplex($sname, $population, $output_dir, $R2_count, $R1_raw_count, $R2_raw_count);
         }
+        summarize_demultiplex($sample, $population, $output_dir, $R2_count, $R1_raw_count, $R2_raw_count, $samples{$sample});
     }
 
     # Search for reads that are missing a barcode
     # First create a master file containing headers of R1 reads with found indices
-    print "\n Handling reads without a barcode... ";
-    my $indexed_list = "$output_dir/tmp/indexed\_$population\_R1.list";
+    print "\n Handling reads without an index... ";
+    my $indexed_list = "$output_dir/tmp/indexed.list";
     my $concat_cmd = "cat $output_dir/tmp/*\_$population.list > $indexed_list";
     ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $concat_cmd, verbose => 0 );
@@ -252,7 +246,6 @@ sub function1
             $R2_count = get_unindexed($read_file, $indexed_list, $read_pair);
             select(STDOUT);
             close NO_INDEX or die "ERROR: Could not close $unindexed\n";
-            #print "$read_pair reads without an index placed in $unindexed\n";
         }
         summarize_demultiplex("unindexed", $population, $output_dir, $R2_count, $R1_raw_count, $R2_raw_count);
     }
@@ -263,7 +256,7 @@ sub function1
     }
     print "\n",
           " Processed reads located in:\n  $output_dir/demultiplex/\n",
-          " Summary (open in Excel or use command more): $summary_file\n";
+          " Summary: $summary_file\n";
 }
 
 #################################
@@ -272,27 +265,34 @@ sub function1
 #################################
 sub summarize_demultiplex
 {
-    my $index = $_[0];
+    my $sample = $_[0];
     my $population = $_[1];
     my $output_dir = $_[2];
     my $R2_count = $_[3];
     my $R1_raw_count = $_[4];
     my $R2_raw_count = $_[5];
+    my @indices;
+    if ( defined $_[6] ){ @indices = @{$_[6]}; }
 
     my $summary_file = "summary_files/$population\_demultiplex\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
 
     my $R1_count = 0;
     my $R1_demultiplexed;
-    if ($index eq 'unindexed')
+    my $wc_cmd;
+    if ($sample eq 'unindexed')
     {
-        $R1_demultiplexed = "$output_dir/tmp/indexed\_$population\_R1.list";
+        #$R1_demultiplexed = "$output_dir/tmp/indexed.list";
+        $wc_cmd = "wc -l $output_dir/tmp/indexed.list";
     }
     else
     {
-        $R1_demultiplexed = "$output_dir/tmp/$index\_$population.list";
+        #$R1_demultiplexed = "$output_dir/tmp/$sample\_$population.list";
+        $wc_cmd = "cat ";
+        foreach my $index ( @indices ) { $wc_cmd .= "$output_dir/tmp/$index\_$population.list "; }
+        $wc_cmd .= "| wc -l";
     }
-    my $wc_cmd = "wc -l $R1_demultiplexed";
+    #my $wc_cmd = "wc -l $R1_demultiplexed";
     my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
         run( command => $wc_cmd, verbose => 0 );
     if ($success)
@@ -301,6 +301,7 @@ sub summarize_demultiplex
         my @wc_buffer = split(' ',"@$stdout_buf");
         # No need to divide by 4 as this file only contained FASTQ header lines
         $R1_count = $wc_buffer[0];
+        #print "R1_count for $sample: $R1_count\n";
     }
     else
     {
@@ -308,7 +309,7 @@ sub summarize_demultiplex
     }
 
     # If summarizing unindexed reads, adjust $R1_count (currently counts # of indexed reads)
-    if ($index eq 'unindexed')
+    if ($sample eq 'unindexed')
     {
         $R1_count = ( $R1_raw_count - $R1_count );
     }
@@ -317,7 +318,7 @@ sub summarize_demultiplex
     my $R1_percent = ( $R1_count / $R1_raw_count ) * 100;
     my $R2_percent = ( $R2_count / $R2_raw_count ) * 100;
 
-    printf (SUMMARY "%s\t%d\t%.2f%%\t%d\t%.2f%%\n", $index, $R1_count, $R1_percent, $R2_count, $R2_percent);
+    printf (SUMMARY "%s\t%d\t%.2f%%\t%d\t%.2f%%\n", $sample, $R1_count, $R1_percent, $R2_count, $R2_percent);
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 
@@ -359,8 +360,8 @@ sub get_r2
     while(<HEAD>) {
         chomp;
         # Depending on the read format, here are two cases:
-        $_ =~ s/1:N:0:/2:N:0:/;   # ***** Another hardcoded assumption. How to distinguish R1 from R2?? *****
-        $_ =~ s/(\w+)\/1$/$1\/2/;   # This works with the test data set
+        $_ =~ s/1:N:0:/2:N:0:/;
+        $_ =~ s/(\w+)\/1$/$1\/2/;
         $href->{$_}->{'found'} = 1;
     }
     close HEAD or die "ERROR: Could not close $headers\n";

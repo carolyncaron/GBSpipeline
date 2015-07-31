@@ -57,14 +57,14 @@ sub f3
     system("mkdir -p logs/");
 
     # Begin recording progress since building reference index files can take a while
-    my @samples = `cut -f1 $index_file`;
+    my @samples = `cut -f1 $index_file | sort -u`;
     my $num_samples = $#samples + 1;
     if ($num_samples == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
     my $sample_count = 0;
-    print_progress($sample_count, $num_samples);
 
-    # Remove file extension to get the basename
+    # Remove directory and file extension to get the basename
     my $reference_basename = $reference_genome;
+    #$reference_basename =~ s/^*\\
     $reference_basename =~ s/\.f\w*$//;
 
     # Check for the bowtie2 index files in the same directory as the reference genome,
@@ -112,7 +112,7 @@ sub f3
     system("mkdir -p summary_files/");
     my $summary_file = "summary_files/$population\_align\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "Sample\tInput Reads\tReads Paired\t% Reads Paired\tOverall Alignment Rate\n";
+    print SUMMARY "Sample\tInput Reads\tUnique Reads\t% Unique\tOverall Alignment Rate\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 
     # BEGIN aligning by sample
@@ -120,6 +120,8 @@ sub f3
     {
         chomp($sample);
         $sample =~ s/ //g;
+        $sample_count++;
+        print_progress($sample_count, $num_samples, "Current sample: $sample       ");
 
         my $R1_trimmed = "$output_dir/trim/$sample\_$population\_R1-p.fastq";
         my $R2_trimmed = "$output_dir/trim/$sample\_$population\_R2-p.fastq";
@@ -146,7 +148,7 @@ sub f3
 
         ############## SEQUENTIAL RUN ###############
         # Run bowtie2 for each sample sequentially. If desired to run them concurrently,
-        #   comment out the following if block and uncomment the section below
+        #   comment out the following and uncomment the section below
         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => $cmd, verbose => 0 );
         if ($success)
@@ -163,9 +165,8 @@ sub f3
         }
 
         # Summary of progress
-        $sample_count++;
-        print_progress($sample_count, $num_samples, "Current sample: $sample       ");
         summarize_align($sample, $population, \@$stderr_buf);
+        print_progress($sample_count, $num_samples, "                             ");
         ##############################################
 
         ############## CONCURRENT RUN ################
@@ -183,9 +184,8 @@ sub f3
 
 ##############################
 ##### Summarize step 3
-##### Sample     # of reads aligned  % of reads aligned
+##### sample     # of input reads   # of unique reads   % unique reads    % overall alignment
 ##############################
-# TODO: Needs more flexibility to handle different bowtie2 versions :-(
 sub summarize_align
 {
     my $sample = $_[0];
@@ -206,11 +206,11 @@ sub summarize_align
     $align_info[0] =~ /(\d+) reads;/;
     my $input_reads = $1;
     # Fourth line: # of uniquely mapping reads
-    $align_info[1] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%).+ aligned concordantly exactly 1 time/;
+    $align_info[3] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%)\)\s+aligned concordantly exactly 1 time/;
     my $unique_reads = $1;
     my $percent_unique = $2;
     # Last line: % overall alignment rate
-    $align_info[$#align_info] =~ /(\d+\.\d+\s?%) overall alignment rate/;
+    $align_info[$#align_info] =~ /(\d+\.\d+\s?%)\s+overall alignment rate/;
     my $overall_alignment = $1;
 
     my $summary_file = "summary_files/$population\_align\_summary.txt";

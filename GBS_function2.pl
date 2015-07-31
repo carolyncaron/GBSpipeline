@@ -22,6 +22,8 @@ sub f2
     #############################################
     # Version
         my $version = '0.33';
+    # THREADS
+        my $threads = '20';
     # ILLUMINACLIP:
         my $seed_mismatches = '2';
         my $palindrome_clip_threshold = '30';
@@ -52,12 +54,12 @@ sub f2
     unless ( -s "$trimmomatic_path" )
     {
         print "WARNING: Can't locate Trimmomatic at $trimmomatic_path.\n",
-              "Would you like to install v$version now in the cwd? (yes/no) ";
+              "Would you like to attempt to install v$version there now? (yes/no) ";
         chomp (my $usr_input = <STDIN>);
         if ($usr_input =~ /yes/i)
         {
             system("curl -O http://www.usadellab.org/cms/uploads/supplementary/Trimmomatic/Trimmomatic-$version.zip");
-            system("unzip Trimmomatic-$version.zip; rm -f Trimmomatic-$version.zip;");
+            system("unzip Trimmomatic-$version.zip; rm -f Trimmomatic-$version.zip; mv Trimmomatic-$version/ $trimmomatic_path/");
 
             $trimmomatic_path = "Trimmomatic-$version/trimmomatic-$version.jar";
             my $path = `pwd`;
@@ -89,17 +91,17 @@ sub f2
 
     # The sample names are in the first column if the index_file is in 2-column format
     # Otherwise, we only have a list of indices so the following cut command should still work
-    my @samples = `cut -f1 $index_file`;
+    my @samples = `cut -f1 $index_file | sort -u`;
     my $num_samples = $#samples + 1;
     if ($num_samples == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
     my $sample_count = 0;
-    print_progress($sample_count, $num_samples);
 
     # BEGIN trimming by sample
     foreach my $sample (@samples)
     {
         chomp($sample);
         $sample =~ s/ //g;
+        print_progress($sample_count, $num_samples, "Current sample: $sample       ");
 
         my $R1_reads = "$output_dir/demultiplex/$sample\_$population\_R1.fastq";
         my $R2_reads = "$output_dir/demultiplex/$sample\_$population\_R2.fastq";
@@ -111,7 +113,7 @@ sub f2
 
         # Run Trimmomatic
         my $cmd = "java -classpath $trimmomatic_path org.usadellab.trimmomatic.TrimmomaticPE ";
-        $cmd .= "-phred33 ";
+        $cmd .= "-threads $threads -phred33 ";
         $cmd .= "-trimlog logs/$sample.trim.log ";
         $cmd .= "$R1_reads $R2_reads ";
         $cmd .= "$output_dir/trim/$sample\_$population\_R1-p.fastq $output_dir/trim/$sample\_$population\_R1-s.fastq ";
@@ -137,10 +139,9 @@ sub f2
             die "$error_message\n@$stderr_buf\n";
         }
 
-        # Summary of progress
         $sample_count++;
-        print_progress($sample_count, $num_samples, "Current sample: $sample       ");
         summarize_trim($sample, $population, $output_dir, \@$stderr_buf);
+        print_progress($sample_count, $num_samples, "                              ");
     }
     print "\n",
         " Processed reads located in:\n  $output_dir/trim/ \n",
@@ -174,7 +175,7 @@ sub summarize_trim
     my $reverse_surviving = $trim_info[16];
     my $reverse_surviving_percent = $trim_info[17];
     my $dropped = $trim_info[19];
-    my $dropped_percent = $trim_info[20];
+    chomp( my $dropped_percent = $trim_info[20] );
 
     print SUMMARY "$sample\t$input_read_pairs\t$both_surviving\t$both_surviving_percent\t",
         "$forward_surviving\t$forward_surviving_percent\t$reverse_surviving\t",
