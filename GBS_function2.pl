@@ -20,23 +20,25 @@ sub f2
     #############################################
     ##### DEFAULT VARIABLES FOR TRIMMOMATIC #####
     #############################################
+    my %trim_options = (
     # Version
-        my $version = '0.33';
+        'VERSION' => '0.33',
     # THREADS
-        my $threads = '20';
+        'TRIM_THREADS' => '1',
     # ILLUMINACLIP:
-        my $seed_mismatches = '2';
-        my $palindrome_clip_threshold = '30';
-        my $simple_clip_threshold = '10';
+        'SEED_MISMATCHES' => '2',
+        'PALINDROME_CLIP_THRESHOLD' => '30',
+        'SIMPLE_CLIP_THRESHOLD' => '10',
     # SLIDINGWINDOW:
-        my $window_size = '4';
-        my $required_quality = '15';
+        'WINDOW_SIZE' => '4',
+        'REQUIRED_QUALITY' => '15',
     # LEADING:
-        my $leading = '3';
+        'LEADING_QUALITY' => '3',
     # TRAILING:
-        my $trailing = '3';
+        'TRAILING_QUALITY' => '3',
     # MINLEN:
-        my $minlen = '36';
+        'MINLEN' => '36',
+    );
     #############################################
 
     # Collect function-specific parameters
@@ -46,22 +48,39 @@ sub f2
     my $index_file = $_[3];
     my $output_dir = $_[4];
 
+    # Collect trimmomatic-specific options
+    if ($_[5])
+    {
+        my %options = %{$_[5]};
+        while ( my ($key, $value) = each %options )
+        {
+            if ($options{ $key })
+            {
+                $trim_options{ $key } = $value;
+            }
+        }
+    }
+
     # Ensure index_file exists in the cwd
     unless ( -f $index_file && -r $index_file )
     {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
 
-    # Check for trimmomatic
+    # @TODO: Lookup the version of the user's trimmomatic
     unless ( -s "$trimmomatic_path" )
     {
+
+    #}
+    #else
+    #{
         print "WARNING: Can't locate Trimmomatic at $trimmomatic_path.\n",
-              "Would you like to attempt to install v$version there now? (yes/no) ";
+              "Would you like to attempt to install v$trim_options{'VERSION'} there now? (yes/no) ";
         chomp (my $usr_input = <STDIN>);
         if ($usr_input =~ /yes/i)
         {
-            system("curl -O http://www.usadellab.org/cms/uploads/supplementary/Trimmomatic/Trimmomatic-$version.zip");
-            system("unzip Trimmomatic-$version.zip; rm -f Trimmomatic-$version.zip; mv Trimmomatic-$version/ $trimmomatic_path/");
-
-            $trimmomatic_path = "Trimmomatic-$version/trimmomatic-$version.jar";
+            system("curl -O http://www.usadellab.org/cms/uploads/supplementary/Trimmomatic/Trimmomatic-$trim_options{'VERSION'}.zip");
+            system("unzip Trimmomatic-$trim_options{'VERSION'}.zip; rm -f Trimmomatic-$trim_options{'VERSION'}.zip; mv Trimmomatic-$trim_options{'VERSION'}/ $trimmomatic_path/");
+#
+            $trimmomatic_path = "Trimmomatic-$trim_options{'VERSION'}/trimmomatic-$trim_options{'VERSION'}.jar";
             my $path = `pwd`;
             if (-e "$trimmomatic_path")
             {
@@ -112,40 +131,41 @@ sub f2
         {   die "ERROR: $R2_reads does not exist or is unreadable.\n"; }
 
         # Run Trimmomatic
-        my $cmd = "java -classpath $trimmomatic_path org.usadellab.trimmomatic.TrimmomaticPE ";
-        $cmd .= "-threads $threads -phred33 ";
-        $cmd .= "-trimlog logs/$sample.trim.log ";
-        $cmd .= "$R1_reads $R2_reads ";
-        $cmd .= "$output_dir/trim/$sample\_$population\_R1-p.fastq $output_dir/trim/$sample\_$population\_R1-s.fastq ";
-        $cmd .= "$output_dir/trim/$sample\_$population\_R2-p.fastq $output_dir/trim/$sample\_$population\_R2-s.fastq ";
-        $cmd .= "ILLUMINACLIP:$trim_file:$seed_mismatches:";
-        $cmd .= "$palindrome_clip_threshold:$simple_clip_threshold ";
-        $cmd .= "LEADING:$leading ";
-        $cmd .= "TRAILING:$trailing ";
-        $cmd .= "SLIDINGWINDOW:$window_size:$required_quality ";
-        $cmd .= "MINLEN:$minlen ";
+         my $cmd = "java -classpath $trimmomatic_path org.usadellab.trimmomatic.TrimmomaticPE ";
+         $cmd .= "-threads $trim_options{'TRIM_THREADS'} -phred33 ";
+         $cmd .= "-trimlog logs/$sample.trim.log ";
+         $cmd .= "$R1_reads $R2_reads ";
+         $cmd .= "$output_dir/trim/$sample\_$population\_R1-p.fastq ";
+         $cmd .= "$output_dir/trim/$sample\_$population\_R1-s.fastq ";
+         $cmd .= "$output_dir/trim/$sample\_$population\_R2-p.fastq ";
+         $cmd .= "$output_dir/trim/$sample\_$population\_R2-s.fastq ";
+         $cmd .= "ILLUMINACLIP:$trim_file:$trim_options{'SEED_MISMATCHES'}:";
+         $cmd .= "$trim_options{'PALINDROME_CLIP_THRESHOLD'}:$trim_options{'SIMPLE_CLIP_THRESHOLD'} ";
+         $cmd .= "LEADING:$trim_options{'LEADING_QUALITY'} ";
+         $cmd .= "TRAILING:$trim_options{'TRAILING_QUALITY'} ";
+         $cmd .= "SLIDINGWINDOW:$trim_options{'WINDOW_SIZE'}:$trim_options{'REQUIRED_QUALITY'} ";
+         $cmd .= "MINLEN:$trim_options{'MINLEN'} ";
 
-        my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
-            run( command => $cmd, verbose => 0 );
-        if ($success)
-        {
-            #print "Trimmomatic successfully finished trimming $sample indexed reads.\n";
-            my $trimlog = "logs/$sample\_$population\_trimmomatic\_output.log";
-            open TRIMLOG, ">$trimlog";
-            print TRIMLOG join " ", @$full_buf;
-        } else
-        {
-            print "ERROR: Trimmomatic did not complete successfully:\n";
-            die "$error_message\n@$stderr_buf\n";
-        }
+         my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
+             run( command => $cmd, verbose => 0 );
+         if ($success)
+         {
+             my $trimlog = "logs/$sample\_$population\_trimmomatic\_output.log";
+             open TRIMLOG, ">$trimlog";
+             print TRIMLOG join " ", @$full_buf;
+         } else
+         {
+             print "ERROR: Trimmomatic did not complete successfully:\n";
+             die "$error_message\n@$stderr_buf\n";
+         }
 
-        $sample_count++;
-        summarize_trim($sample, $population, $output_dir, \@$stderr_buf);
-        print_progress($sample_count, $num_samples, "                              ");
+         $sample_count++;
+         summarize_trim($sample, $population, $output_dir, \@$stderr_buf);
+         print_progress($sample_count, $num_samples, "                              ");
     }
     print "\n",
-        " Processed reads located in:\n  $output_dir/trim/ \n",
-        " Summary (open in Excel or use command more): $summary_file\n";
+        " Processed reads located in:  $output_dir/trim/ \n",
+        " Summary file:  $summary_file\n";
 }
 
 #################################

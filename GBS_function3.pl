@@ -18,12 +18,18 @@ sub f3
     #########################################
     ##### DEFAULT VARIABLES FOR BOWTIE2 #####
     #########################################
-    # Default is set to 3 to allow a single read to map up to 3 times. Note that setting
-    # this value higher will greatly increase the amount of time bowtie2 needs to run.
-    my $max_valid_alignments = '3';      # k
-    my $num_threads = '1';               # p
-    my $max_fragment_length = '11000';   # X
-    my $max_reseed_rate = '5';           # R
+    my %align_options = (
+    # p
+        'ALIGN_THREADS' => '1',
+    # k
+    ### Default is set to 3 to allow a single read to map up to 3 times. Note that setting
+    ### this value higher will greatly increase the amount of time bowtie2 needs to run.
+        'MAX_VALID_ALIGNMENTS' => '3',
+    # X
+        'MAX_FRAGMENT_LENGTH' => '11000',
+    # R
+        'MAX_RESEED_RATE' => '5',
+    );
     #########################################
 
     # Collect function-specific parameters
@@ -33,13 +39,19 @@ sub f3
     my $index_file = $_[3];
     my $output_dir = $_[4];
 
-    # Save parameters if provided for bowtie2
-    my @bowtie2_options;
-    my $num_options = $#_ + 1;
-    if ($num_options > 5)
+    # Collect bowtie2-specific options
+    if ($_[5])
     {
-        @bowtie2_options = @{$_[5]};
+        my %options = %{$_[5]};
+        while ( my ($key, $value) = each %options )
+        {
+            if ($options{ $key })
+            {
+                $align_options{ $key } = $value;
+            }
+        }
     }
+    print Dumper(\%align_options);
 
     # Ensure index_file exists in the cwd
     unless ( -f $index_file && -r $index_file )
@@ -64,7 +76,6 @@ sub f3
 
     # Remove directory and file extension to get the basename
     my $reference_basename = $reference_genome;
-    #$reference_basename =~ s/^*\\
     $reference_basename =~ s/\.f\w*$//;
 
     # Check for the bowtie2 index files in the same directory as the reference genome,
@@ -94,20 +105,6 @@ sub f3
         }
     }
 
-    # Print the parameters being given to bowtie2
-    print " Running bowtie2 with the following parameters: \n";
-    if (@bowtie2_options)
-    {
-        print join(" ",@bowtie2_options);
-        print " --no-sq --no-head\n";
-    }
-    else
-    {
-        print "\t--end-to-end --no-mixed --no-discordant --no-sq --no-hd ",
-              "-k $max_valid_alignments -X $max_fragment_length -R $max_reseed_rate ",
-              "-p $num_threads\n";
-    }
-
     # Create summary file
     system("mkdir -p summary_files/");
     my $summary_file = "summary_files/$population\_align\_summary.txt";
@@ -131,20 +128,10 @@ sub f3
         unless ( -f $R2_trimmed && -r $R2_trimmed )
         {   die "ERROR: $R2_trimmed does not exist or is unreadable.\n"; }
 
-        # Run bowtie2 using either:
-        #  -Default parameters if no options given
-        #  -Using custom parameters
-        my $cmd;
-        if(@bowtie2_options)    # Run with custom paramaters
-        {
-            $cmd = "$bowtie2_dir/bowtie2 --no-sq --no-head @bowtie2_options ";
-            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$sample\_$population.sam";
-        } else                  # Run with default parameters
-        {
-            $cmd = "$bowtie2_dir/bowtie2 --end-to-end --no-mixed --no-discordant --no-sq --no-head ";
-            $cmd .= "-k $max_valid_alignments -X $max_fragment_length -R $max_reseed_rate -p $num_threads ";
-            $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$sample\_$population.sam";
-        }
+        my $cmd = "$bowtie2_dir/bowtie2 --end-to-end --no-mixed --no-discordant --no-sq --no-head ";
+        $cmd .= "-k $align_options{'MAX_VALID_ALIGNMENTS'} -X $align_options{'MAX_FRAGMENT_LENGTH'} ";
+        $cmd .= "-R $align_options{'MAX_RESEED_RATE'} -p $align_options{'ALIGN_THREADS'} ";
+        $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$sample\_$population.sam";
 
         ############## SEQUENTIAL RUN ###############
         # Run bowtie2 for each sample sequentially. If desired to run them concurrently,
@@ -172,14 +159,15 @@ sub f3
         ############## CONCURRENT RUN ################
         # The following code allows the individual bowtie2 commands to be run in the background,
         # effectively aligning reads from all samples concurrently.
+        # CAUTION: Ensure you have at least as many threads as samples!
         #my $alignlog = "logs/$sample\_$population\_bowtie2_output.log";
         #system("$cmd 2>$alignlog &");
         ##############################################
     }
 
     print "\n",
-    " Processed reads will be located in:\n  $output_dir/align/ \n",
-    " Summary (open in Excel or use command more): $summary_file\n";
+    " Processed reads will be located in:  $output_dir/align/ \n",
+    " Summary file:  $summary_file\n";
 }
 
 ##############################
@@ -203,10 +191,10 @@ sub summarize_align
 
     ## Can go on a line-by-line basis, which appears to be consistent:
     # 1st line: # of input reads
-    $align_info[0] =~ /(\d+) reads;/;
+    $align_info[0] =~ /(\d+)\s+reads;/;
     my $input_reads = $1;
     # Fourth line: # of uniquely mapping reads
-    $align_info[3] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%)\)\s+aligned concordantly exactly 1 time/;
+    $align_info[3] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%).+ aligned concordantly exactly 1 time/;
     my $unique_reads = $1;
     my $percent_unique = $2;
     # Last line: % overall alignment rate

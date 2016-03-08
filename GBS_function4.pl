@@ -33,8 +33,8 @@ sub f4
     {   die "ERROR: Can't locate bcftools in $bcftools_dir\n";  }
 
     # Check samtools + bcftools versions
-    my $sam_version = `$samtools_dir/samtools --version-only` || die "ERROR: Ensure that samtools version is 1.0 or greater.\n";
-    my $bcf_version = `$bcftools_dir/bcftools --version-only` || die "ERROR: Ensure that bcftools version is 1.0 or greater.\n";
+    my $sam_version = `$samtools_dir/samtools --version-only` || die "ERROR: Please ensure that samtools version is 1.0 or greater.\n";
+    my $bcf_version = `$bcftools_dir/bcftools --version-only` || die "ERROR: Please ensure that bcftools version is 1.0 or greater.\n";
 
     unless ( -f $index_file && -r $index_file )
     {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
@@ -44,6 +44,12 @@ sub f4
     {   die "ERROR: $reference_genome does not exist or is unreadable.\n";  }
 
     system("mkdir -p $output_dir/variants/");
+
+    #print "Default action is to combine \n",
+    #          "Would you like to attempt to install v$version there now? (yes/no) ";
+    #chomp (my $usr_input = <STDIN>);
+    #if ($usr_input =~ /yes/i)
+    #{}
 
     my @samples = `cut -f1 $index_file | sort -u`;
     my $num_samples = $#samples + 1;
@@ -109,9 +115,9 @@ sub f4
         unless ($success)
         {   die "ERROR: Failed to index $sample\_$population\_mapped.sorted.bam: $error_message\n@$stderr_buf";   }
 
+        ### @TODO: Give the user the option to call mpileup on all samples rather than
+        ###        each one individually
         ## 7. Identify genomic variants using mpileup
-        ##@TODO: Here we need the user to specify if we want to run mpileup on a per-sample basis
-        ##       or for all samples (perhaps the parents as well for good measure?).
         ### Since version 1.0: -D deprecated, use -t DP instead
         print_progress($step_count++, $total_steps, " Identifying variants");
         $cmd = "$samtools_dir/samtools mpileup -f $reference_genome -g -I -B -t DP ";

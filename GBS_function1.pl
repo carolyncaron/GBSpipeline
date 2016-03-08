@@ -4,7 +4,7 @@
 ##### Usage: demultiplex population index_file RE_site R1_file R2_file output_dir
 ##### Required user input:
 #####   population : A name for the population in the GBS run (no whitespace allowed)
-#####   index_file : A file containing the indices (aka barcodes) for distinguishing samples
+#####   index_file : A file containing the indices (aka barcodes) for distinguishing samples (Parents should be first)
 #####   RE_site: A short nucleotide string representing the rare-cutter restriction site used in extracting the reads
 #####   R1_file : A FASTQ file (zipped or unzipped) containing raw Read 1 reads
 #####   R2_file : A FASTQ file (zipped or unzipped) containing raw Read 2 reads
@@ -47,6 +47,7 @@ sub function1
     }
 
     # Check the files containing reads that they are in FASTQ format, version Illumina 1.8+
+    # @TODO: What if they are zipped?
     foreach my $R_file ($R1_file, $R2_file)
     {
         open (READS, $R_file) or die "ERROR: Cannot open $R_file.\n";
@@ -66,7 +67,7 @@ sub function1
     # Create a directory for demultiplexed files
     system("mkdir -p $output_dir/demultiplex/");
     # Create a directory for files that will only be kept temporarily
-    system("mkdir -p $output_dir/tmp/");
+    system("rm -f $output_dir/tmp/*; mkdir -p $output_dir/tmp/");
 
     # Check that the index_file is valid. Either:
     # 1. It just contains the barcodes, each on its own line (1 column)
@@ -78,6 +79,7 @@ sub function1
     open (INDICES, $index_file) or die "ERROR: Unable to open $index_file.\n";
     my $first_line = <INDICES>;
     chomp $first_line;
+    $first_line =~ s/ //g;
     my @columns = split(/\t/, $first_line);
     my $num_col = ($#columns)+1;
     if ($num_col > 2) { die "ERROR: Unexpected number of columns in $index_file: $num_col \n"; }
@@ -179,9 +181,9 @@ sub function1
             print_progress($step_count++, $total_steps, " Current sample: $sample        ");
 
             ## 1. Search R1 reads for each barcode at the start of the sequence
-            # (zgrep -A 2 -B 1 options: include 2 lines after, 1 line before match)
+            # (grep -A 2 -B 1 options: include 2 lines after, 1 line before match)
             # Then remove the "--" separator between each read and save as a FASTQ file
-            system("zgrep -A 2 -B 1 ^$index $R1_file | grep -v ^- > $R1_with_index");
+            system("grep -A 2 -B 1 ^$index $R1_file | grep -v ^- > $R1_with_index");
             print_progress($step_count++, $total_steps);
 
             ## 2.  Trim off barcodes from each read using the barcode length after accounting
@@ -255,8 +257,9 @@ sub function1
         die "$error_message\n@$stderr_buf\n";
     }
     print "\n",
-          " Processed reads located in:\n  $output_dir/demultiplex/\n",
-          " Summary: $summary_file\n";
+          " Processed reads located in:  $output_dir/demultiplex/\n",
+          " Summary file:  $summary_file\n";
+
 }
 
 #################################
@@ -278,7 +281,6 @@ sub summarize_demultiplex
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
 
     my $R1_count = 0;
-    my $R1_demultiplexed;
     my $wc_cmd;
     if ($sample eq 'unindexed')
     {
@@ -302,16 +304,16 @@ sub summarize_demultiplex
         # No need to divide by 4 as this file only contained FASTQ header lines
         $R1_count = $wc_buffer[0];
         #print "R1_count for $sample: $R1_count\n";
+
+        # If summarizing unindexed reads, adjust $R1_count (currently counts # of indexed reads)
+        if ($sample eq 'unindexed')
+        {
+            $R1_count = ( $R1_raw_count - $R1_count );
+        }
     }
     else
     {
-        die "ERROR: Unable to do line count of file $R1_demultiplexed: $error_message\n@$stderr_buf\n";
-    }
-
-    # If summarizing unindexed reads, adjust $R1_count (currently counts # of indexed reads)
-    if ($sample eq 'unindexed')
-    {
-        $R1_count = ( $R1_raw_count - $R1_count );
+        die "ERROR: Unable to do line counts for summary: $error_message\n@$stderr_buf\n";
     }
 
     # Calculate the percentage of raw reads demultiplexed
