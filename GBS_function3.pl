@@ -1,13 +1,13 @@
 #!/usr/bin/perl -w
 
 ##### STEP 3 : ALIGNMENT OF READS TO REFERENCE GENOME #####
-##### Usage: f3 bowtie2_dir reference_genome
+##### Usage: align_reads [BOWTIE2_PATH] [REFERENCE]
 ##### Required input:
-#####   bowtie2_dir - location of bowtie2 installation
-#####   reference_genome - the pathname of the reference genome sequence
+#####   BOWTIE2_PATH : location of bowtie2 installation
+#####   REFERENCE : the pathname of the reference genome sequence
 ##### Output:
-#####   $output_dir/align/$sample_$population.sam
-#####   $output_dir/align/$sample_$population_align.log
+#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION].sam
+#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_align.log
 #####   *If not already present, reference genome index files*
 
 use strict;

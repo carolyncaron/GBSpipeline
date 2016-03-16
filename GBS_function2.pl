@@ -1,16 +1,16 @@
 #!/usr/bin/perl -w
 
 ##### STEP 2 : TRIM DEMULTIPLEXED READS #####
-##### Usage: trim_reads trimmomatic_path trim_file
+##### Usage: trim_reads [TRIMMOMATIC_PATH] [TRIM_FILE]
 ##### Required input:
-#####   trimmomatic_path : The full pathname to the trimmomatic jar file
-#####   trim_file : A list of sequences to filter out the reads (ie. Illumina adaptors)
+#####   TRIMMOMATIC_PATH : The full pathname to the trimmomatic jar file
+#####   TRIM_FILE : A list of sequences to filter out the reads (ie. Illumina adaptors)
 ##### Output:
-#####   $output_dir/trim/$sample_$population_R1-s.fastq
-#####   $output_dir/trim/$sample_$population_R1-p.fastq
-#####   $output_dir/trim/$sample_$population_R2-s.fastq
-#####   $output_dir/trim/$sample_$population_R2-p.fastq
-#####   $output_dir/trim/$sample_$population_output.log
+#####   [OUTPUT_DIR]/trim/[SAMPLE]_[POPULATION]_R1-s.fastq
+#####   [OUTPUT_DIR]/trim/[SAMPLE]_[POPULATION]_R1-p.fastq
+#####   [OUTPUT_DIR]/trim/[SAMPLE]_[POPULATION]_R2-s.fastq
+#####   [OUTPUT_DIR]/trim/[SAMPLE]_[POPULATION]_R2-p.fastq
+#####   [OUTPUT_DIR]/trim/[SAMPLE]_[POPULATION]_output.log
 
 use strict;
 use warnings;
@@ -68,10 +68,6 @@ sub f2
     # @TODO: Lookup the version of the user's trimmomatic
     unless ( -s "$trimmomatic_path" )
     {
-
-    #}
-    #else
-    #{
         print "WARNING: Can't locate Trimmomatic at $trimmomatic_path.\n",
               "Would you like to attempt to install v$trim_options{'VERSION'} there now? (yes/no) ";
         chomp (my $usr_input = <STDIN>);
@@ -79,7 +75,6 @@ sub f2
         {
             system("curl -O http://www.usadellab.org/cms/uploads/supplementary/Trimmomatic/Trimmomatic-$trim_options{'VERSION'}.zip");
             system("unzip Trimmomatic-$trim_options{'VERSION'}.zip; rm -f Trimmomatic-$trim_options{'VERSION'}.zip; mv Trimmomatic-$trim_options{'VERSION'}/ $trimmomatic_path/");
-#
             $trimmomatic_path = "Trimmomatic-$trim_options{'VERSION'}/trimmomatic-$trim_options{'VERSION'}.jar";
             my $path = `pwd`;
             if (-e "$trimmomatic_path")

@@ -1,17 +1,17 @@
 #!/usr/bin/perl -w
 
 ##### STEP 4 : SAM file processing and SNP calling #####
-##### Usage: f4 samtools_dir bcftools_dir
+##### Usage: call_SNPs [SAMTOOLS_PATH] [BCFTOOLS_PATH]
 ##### Required input:
-#####   samtools_dir - location of user's copy of samtools
-#####   bcftools_dir - location of user's copy of bcftools
+#####   SAMTOOLS_PATH : location of user's copy of samtools
+#####   BCFTOOLS_PATH : location of user's copy of bcftools
 ##### Output:
-#####   $output_dir/align/$sample_$population_mapped.sam
-#####   $output_dir/align/$sample_$population_mapped.sorted.sam
-#####   $output_dir/align/$sample_$population_mapped.bam
-#####   $output_dir/align/$sample_$population_mapped.sorted.bam
-#####   $output_dir/variants/$sample_$population_mapped.bcf
-#####   $output_dir/variants/$sample_$population_mapped.vcf
+#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.sam
+#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.sorted.sam
+#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.bam
+#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.sorted.bam
+#####   [OUTPUT_DIR]/variants/[SAMPLE]_[POPULATION]_mapped.bcf
+#####   [OUTPUT_DIR]/variants/[SAMPLE]_[POPULATION]_mapped.vcf
 
 use strict;
 use warnings;

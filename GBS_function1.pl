@@ -1,19 +1,19 @@
 #!/usr/bin/perl -w
 
 ##### STEP 1 : DEMULTIPLEX READS #####
-##### Usage: demultiplex population index_file RE_site R1_file R2_file output_dir
+##### Usage: demultiplex [POPULATION] [INDEX_FILE] [RE_SITE] [R1_FILE] [R2_FILE] [OUTPUT_DIR]
 ##### Required user input:
-#####   population : A name for the population in the GBS run (no whitespace allowed)
-#####   index_file : A file containing the indices (aka barcodes) for distinguishing samples (Parents should be first)
-#####   RE_site: A short nucleotide string representing the rare-cutter restriction site used in extracting the reads
-#####   R1_file : A FASTQ file (zipped or unzipped) containing raw Read 1 reads
-#####   R2_file : A FASTQ file (zipped or unzipped) containing raw Read 2 reads
-#####   output_dir : A directory in which processed reads will be placed
+#####   POPULATION : A name for the population in the GBS run (no whitespace allowed)
+#####   INDEX_FILE : A file containing the indices (aka barcodes) for distinguishing samples (Parents should be first)
+#####   RE_SITE: A short nucleotide string representing the rare-cutter restriction site used in extracting the reads
+#####   R1_FILE : A FASTQ file containing raw Read 1 reads
+#####   R2_FILE : A FASTQ file containing raw Read 2 reads
+#####   OUTPUT_DIR : A directory in which processed reads will be placed
 ##### Output:
-#####   $output_dir/demultiplex/$sample_population_R1.fastq for trimmed, filtered R1 reads belonging to $sample
-#####   $output_dir/demultiplex/$sample_population_R2.fastq for R2 reads which pair with filtered R1 reads
-#####   $output_dir/demultiplex/unindexed_population_R1.fastq for unindexed R1 reads
-#####   $output_dir/demultiplex/unindexed_population_R2.fastq for unindexed R2 reads
+#####   [OUTPUT_DIR]/demultiplex/[SAMPLE]_[POPULATION]_R1.fastq for trimmed, filtered R1 reads belonging to [SAMPLE]
+#####   [OUTPUT_DIR]/demultiplex/[SAMPLE]_[POPULATION]_R2.fastq for R2 reads which pair with filtered R1 reads
+#####   [OUTPUT_DIR]/demultiplex/unindexed_[POPULATION]_R1.fastq for unindexed R1 reads
+#####   [OUTPUT_DIR]/demultiplex/unindexed_[POPULATION]_R2.fastq for unindexed R2 reads
 
 use strict;
 use warnings;
