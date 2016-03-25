@@ -216,7 +216,6 @@ sub function1
             #R2_READS->flush();
             select(STDOUT);
             close R2_READS or die "ERROR: Could not close $R2_matches\n";
-            print_progress($step_count++, $total_steps, "                                ");
 
             $index_count++;
         }

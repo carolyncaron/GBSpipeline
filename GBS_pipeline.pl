@@ -41,7 +41,7 @@ use Data::Dumper;
 # Check if command line flags were provided: this overrides any non-flag options
 use Getopt::Long;
 
-my ( $config_file, $help );
+my ( $config_file, $call_multi_sample, $call_single_sample, $help );
 GetOptions ('c|config=s' => \$config_file,
             'help' => \$help,
            );
@@ -232,7 +232,7 @@ if ( exists ( $ARGV[0] ) )
         when ( /function4/ || /f4/ || /SNP_calling/ || /call_SNPs/ )
         {
             print "Calling $FUNCTION ...\n";
-            my ( $samtools_dir, $bcftools_dir );
+            my ( $samtools_dir, $bcftools_dir, $call_mode, $samtools_threads );
 
             # Check config file for parameters
             if ($num_args == 0)
@@ -241,6 +241,10 @@ if ( exists ( $ARGV[0] ) )
                     else { report_missing('SAMTOOLS_PATH'); }
                 if ($config_hash{'BCFTOOLS_PATH'}) { $bcftools_dir = $config_hash{'BCFTOOLS_PATH'}; }
                     else { $bcftools_dir = $samtools_dir; }
+                if ($config_hash{'MODE'}) { $call_mode = $config_hash{'MODE'}; }
+                    else { report_missing('MODE'); }
+                if ($config_hash{'SAMTOOLS_THREADS'}) { $samtools_threads = $config_hash{'SAMTOOLS_THREADS'}; }
+                    else { $samtools_threads = "1"; }
                 if ($config_hash{'REFERENCE'}) { $reference_genome = $config_hash{'REFERENCE'}; }
                     else { report_missing('REFERENCE'); }
             }
@@ -249,6 +253,7 @@ if ( exists ( $ARGV[0] ) )
             {
                 $samtools_dir = $args[0];
                 $bcftools_dir = $args[1];
+                $call_mode = "single";
             }
             else
             {
@@ -257,7 +262,7 @@ if ( exists ( $ARGV[0] ) )
             }
 
             require "$Bin/GBS_function4.pl";
-            f4($samtools_dir, $bcftools_dir, $population, $index_file, $output_dir, $reference_genome);
+            f4($samtools_dir, $bcftools_dir, $call_mode, $population, $index_file, $output_dir, $reference_genome, $samtools_threads);
 
             summarize($start);
         }

@@ -156,7 +156,7 @@ sub f2
 
          $sample_count++;
          summarize_trim($sample, $population, $output_dir, \@$stderr_buf);
-         print_progress($sample_count, $num_samples, "                              ");
+         print_progress($sample_count, $num_samples, "");
     }
     print "\n",
         " Processed reads located in:  $output_dir/trim/ \n",

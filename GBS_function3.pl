@@ -51,7 +51,6 @@ sub f3
             }
         }
     }
-    print Dumper(\%align_options);
 
     # Ensure index_file exists in the cwd
     unless ( -f $index_file && -r $index_file )
@@ -75,6 +74,7 @@ sub f3
     my $sample_count = 0;
 
     # Remove directory and file extension to get the basename
+    # NOTE: Some bowtie2 indices are named with "bowtie2_index" in the name
     my $reference_basename = $reference_genome;
     $reference_basename =~ s/\.f\w*$//;
 
@@ -117,11 +117,13 @@ sub f3
     {
         chomp($sample);
         $sample =~ s/ //g;
+
+        print_progress($sample_count, $num_samples*2, " Aligning sample: $sample              ");
         $sample_count++;
-        print_progress($sample_count, $num_samples, "Current sample: $sample       ");
 
         my $R1_trimmed = "$output_dir/trim/$sample\_$population\_R1-p.fastq";
         my $R2_trimmed = "$output_dir/trim/$sample\_$population\_R2-p.fastq";
+        my $sam_file = "$output_dir/align/$sample\_$population.sam";
 
         unless ( -f $R1_trimmed && -r $R1_trimmed )
         {   die "ERROR: $R1_trimmed does not exist or is unreadable.\n"; }
@@ -131,7 +133,7 @@ sub f3
         my $cmd = "$bowtie2_dir/bowtie2 --end-to-end --no-mixed --no-discordant --no-sq --no-head ";
         $cmd .= "-k $align_options{'MAX_VALID_ALIGNMENTS'} -X $align_options{'MAX_FRAGMENT_LENGTH'} ";
         $cmd .= "-R $align_options{'MAX_RESEED_RATE'} -p $align_options{'ALIGN_THREADS'} ";
-        $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $output_dir/align/$sample\_$population.sam";
+        $cmd .= "-x $reference_basename -1 $R1_trimmed -2 $R2_trimmed -S $sam_file";
 
         ############## SEQUENTIAL RUN ###############
         # Run bowtie2 for each sample sequentially. If desired to run them concurrently,
@@ -150,10 +152,17 @@ sub f3
             print "ERROR: bowtie2 did not complete successfully:\n";
             die "$error_message\n@$stderr_buf\n";
         }
+        print_progress($sample_count, $num_samples*2, " Filtering best hits for: $sample      ");
+        $sample_count++;
+
+        # Find the best hit for reads that aligned 2 or 3 times
+        my $num_best_hits = 0;
+        my $besthits_log = "logs/$sample\_$population\_multimap_processing.log";
+        $num_best_hits = bwt2_besthits($sam_file, "$output_dir/align/$sample\_$population\_besthits.sam", $besthits_log);
 
         # Summary of progress
-        summarize_align($sample, $population, \@$stderr_buf);
-        print_progress($sample_count, $num_samples, "                             ");
+        summarize_align($sample, $population, $num_best_hits, \@$stderr_buf);
+        print_progress($sample_count, $num_samples*2, "");
         ##############################################
 
         ############## CONCURRENT RUN ################
@@ -170,6 +179,79 @@ sub f3
     " Summary file:  $summary_file\n";
 }
 
+#########################
+## Written by Larissa.
+# Filters bowtie2 results to choose the "best" alignments for reads which multimapped.
+# Input: A sam file, the name for the output file, and the name for a log file
+#########################
+sub bwt2_besthits
+{
+    my $sam_file = $_[0];
+    my $out_file = $_[1];
+    my $hitslog = $_[2];
+
+    open(SAM,"<".$sam_file) || die "ERROR: Could not open $sam_file\n";
+    open(OUT,">".$out_file) || die "ERROR: Could not write out to $out_file\n";
+
+    # Keep track of the number of reads kept to report in the summary
+    my %data;
+    my $cons = 18;
+    while(<SAM>) {
+        chomp;
+        # If this is a header line, just print it out...
+        if ($_ =~ /^@/)
+        {   print OUT $_."\n";  }
+        else
+        {   my ($id1, $bw_flag1, $s1, $s_s1, $mapq1, $maps1, $ja1, $p_s1, $size1, $seq1, $jb1, $aln_score1, @junks1) = (split("\t",$_));
+            $aln_score1=~s/AS:i://g;
+            next if $s1 eq '*';     # No hit
+            my $l1 = $_."\n";       # R1 read
+            my $l2 = <SAM>;         # R2 read
+
+            my ($id2, $bw_flag2, $s2, $s_s2, $mapq2, $maps2, $ja2, $p_s2, $size2, $seq2, $jb2, $aln_score2, @junks2) = (split("\t",$l2));
+            $aln_score2=~s/AS:i://g;
+
+            unless ($id1 eq $id2 && $s1 eq $s2 && $s_s1 eq $p_s2 && $p_s1 eq $s_s2)
+            {
+                die "ERROR: Unexpected file format\n";
+            }
+
+            # If we have seen this read pair before, compare it to the previous hits
+            if (exists($data{$id1}))
+            {
+                if( $data{$id1}->{score} <= ($aln_score1 + $aln_score2+$cons))
+                {
+                    $data{$id1}->{num_best}+=1;
+                }
+            }
+
+            # Mark this read pair as seen by entering it into the hash
+            else
+            {
+                $data{$id1} = {l1=>$l1, l2=>$l2,num_best=>1,score=>$aln_score1+$aln_score2};
+            }
+        }
+    }
+    my $num_uniq_hits = 0;
+    my $num_multi_hits = 0;
+
+    foreach my $id (keys %data)
+    {
+        if ($data{$id}->{num_best} eq 1) {
+            $num_uniq_hits++;
+            print OUT $data{$id}->{l1}.$data{$id}->{l2};
+        }
+        else {   $num_multi_hits++; }
+    }
+
+    open HITSLOG, ">$hitslog";
+    print HITSLOG "Found $num_uniq_hits number of uniquely mapped reads.\n";
+    print HITSLOG "Found $num_multi_hits number of multi-mapped reads.\n";
+    print HITSLOG "There is a total of ".($num_uniq_hits+$num_multi_hits)." hits.\n";
+
+    return $num_uniq_hits;
+}
+
 ##############################
 ##### Summarize step 3
 ##### sample     # of input reads   # of unique reads   % unique reads    % overall alignment
@@ -178,7 +260,8 @@ sub summarize_align
 {
     my $sample = $_[0];
     my $population = $_[1];
-    my @bowtie2_output = @{$_[2]};
+    my $num_unique_hits = $_[2];
+    my @bowtie2_output = @{$_[3]};
     #print join " ", @bowtie2_output;
 
     # All the info is in the first array element, so just store it as a string
