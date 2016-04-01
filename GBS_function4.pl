@@ -6,12 +6,10 @@
 #####   SAMTOOLS_PATH : location of user's copy of samtools
 #####   BCFTOOLS_PATH : location of user's copy of bcftools
 ##### Output:
-#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.sam
-#####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.sorted.sam
 #####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.bam
 #####   [OUTPUT_DIR]/align/[SAMPLE]_[POPULATION]_mapped.sorted.bam
-#####   [OUTPUT_DIR]/variants/[SAMPLE]_[POPULATION]_mapped.bcf
-#####   [OUTPUT_DIR]/variants/[SAMPLE]_[POPULATION]_mapped.vcf
+#####   [OUTPUT_DIR]/variants/[SAMPLE]_[POPULATION].bcf and/or [OUTPUT_DIR]/variants/[POPULATION].bcf
+#####   [OUTPUT_DIR]/variants/[SAMPLE]_[POPULATION].vcf and/or [OUTPUT_DIR]/variants/[POPULATION].vcf
 
 use strict;
 use warnings;
@@ -40,22 +38,28 @@ sub f4
 
     # Check that call mode is valid
     unless ($call_mode =~ /single|multi|both/i)
-    {   die "ERROR: \"$call_mode\" is not a valid mode for calling SNPs. Please fix this in the config file.\n";    }
+    {   die "ERROR: \"$call_mode\" is not a valid mode for calling SNPs. Please fix this in the config file.\n";  }
 
     unless ( -f $index_file && -r $index_file )
     {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
-
-    # Check for the reference genome
-    unless (-f $reference_genome && -r $reference_genome)
-    {   die "ERROR: $reference_genome does not exist or is unreadable.\n";  }
-
-    system("mkdir -p $output_dir/variants/");
 
     my @samples = `cut -f1 $index_file | sort -u`;
     my $num_samples = $#samples + 1;
     if ($num_samples == 0){    die "ERROR: $index_file exists but appears to be empty.\n";    }
     my ($sample_count, $step_count, $total_steps) = 0;
-    print_progress($sample_count, $num_samples, "");
+    print_progress($sample_count, $num_samples, " Building genome index");
+
+    # Check for the reference genome
+    unless (-f $reference_genome && -r $reference_genome)
+    {   die "ERROR: $reference_genome does not exist or is unreadable.\n";  }
+
+    # Create the index from the reference genome for samtools to use
+    my $cmd = "$samtools_dir/samtools faidx $reference_genome";
+    my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
+        unless ($success)
+    {   die "ERROR: Failed to index the reference genome with samtools faidx: $error_message\n@$stderr_buf";   }
+
+    system("mkdir -p $output_dir/variants/");
 
     # These are for multi-mode
     my $mpileup_input_files = "";
@@ -87,12 +91,12 @@ sub f4
 
         ## 1. Filter out sequences which did not align, convert to BAM format
         print_progress($step_count++, $total_steps, " $sample: Converting to BAM ");
-        my $cmd = "$samtools_dir/samtools view -b -@ $samtools_threads -F 4 -T $reference_genome ";
+        $cmd = "$samtools_dir/samtools view -b -@ $samtools_threads -F 4 -T $reference_genome ";
         $cmd .= "$sam_file > $bam_file";
-        my ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
+        ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
-        {   die "ERROR: Failed to convert $output_dir/align/$sample\_$population\_besthits.sam \
-                 to BAM:\n$error_message\n@$stderr_buf";   }
+        {   die "ERROR: Failed to convert $output_dir/align/$sample\_$population\_besthits.sam to BAM: \
+            $error_message\n@$stderr_buf";   }
 
         ## 2. Sort BAM
         print_progress($step_count++, $total_steps, " $sample: Sorting BAM        ");
@@ -184,33 +188,7 @@ sub summarize_SNPcall
 {
      my $sample = $_[0];
      my $population = $_[1];
-#     my @bowtie2_output = @{$_[2]};
-#     #print join " ", @bowtie2_output;
-#
-#     # All the info is in the first array element, so just store it as a string
-#     # such that it can be split up into pieces
-#     my $sample_summary = $bowtie2_output[0];
-#     # Eliminate indenting to clean it up
-#     $sample_summary =~ s/^\s+//;
-#     # Store each line as its own array element
-#     my @align_info = split(/\n/, $sample_summary);
-#
-#     ## Can go on a line-by-line basis, which appears to be consistent:
-#     # 1st line: # of input reads
-#     $align_info[0] =~ /(\d+)\s+reads;/;
-#     my $input_reads = $1;
-#     # Fourth line: # of uniquely mapping reads
-#     $align_info[3] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%).+ aligned concordantly exactly 1 time/;
-#     my $unique_reads = $1;
-#     my $percent_unique = $2;
-#     # Last line: % overall alignment rate
-#     $align_info[$#align_info] =~ /(\d+\.\d+\s?%)\s+overall alignment rate/;
-#     my $overall_alignment = $1;
-#
-#     my $summary_file = "summary_files/$population\_align\_summary.txt";
-#     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
-#     print SUMMARY "$sample\t$input_reads\t$unique_reads\t$percent_unique\t$overall_alignment\n";
-#     close SUMMARY or die "ERROR: Could not close $summary_file\n";
+
 }
 
 

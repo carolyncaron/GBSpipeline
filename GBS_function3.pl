@@ -109,7 +109,7 @@ sub f3
     system("mkdir -p summary_files/");
     my $summary_file = "summary_files/$population\_align\_summary.txt";
     open SUMMARY, ">$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "Sample\tInput Reads\tUnique Reads\t% Unique\tOverall Alignment Rate\n";
+    print SUMMARY "Sample\tInput Reads\tTotal Hits\tOverall Alignment rate\tUnique Hits\tPercent Unique\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 
     # BEGIN aligning by sample
@@ -156,12 +156,13 @@ sub f3
         $sample_count++;
 
         # Find the best hit for reads that aligned 2 or 3 times
-        my $num_best_hits = 0;
+        my ($num_best_hits, $num_total_hits) = 0;
         my $besthits_log = "logs/$sample\_$population\_multimap_processing.log";
-        $num_best_hits = bwt2_besthits($sam_file, "$output_dir/align/$sample\_$population\_besthits.sam", $besthits_log);
+        ($num_best_hits, $num_total_hits) =
+            bwt2_besthits($sam_file, "$output_dir/align/$sample\_$population\_besthits.sam", $besthits_log);
 
         # Summary of progress
-        summarize_align($sample, $population, $num_best_hits, \@$stderr_buf);
+        summarize_align($sample, $population, $num_best_hits, $num_total_hits, \@$stderr_buf);
         print_progress($sample_count, $num_samples*2, "");
         ##############################################
 
@@ -249,7 +250,7 @@ sub bwt2_besthits
     print HITSLOG "Found $num_multi_hits number of multi-mapped reads.\n";
     print HITSLOG "There is a total of ".($num_uniq_hits+$num_multi_hits)." hits.\n";
 
-    return $num_uniq_hits;
+    return ($num_uniq_hits, $num_uniq_hits+$num_multi_hits);
 }
 
 ##############################
@@ -261,8 +262,8 @@ sub summarize_align
     my $sample = $_[0];
     my $population = $_[1];
     my $num_unique_hits = $_[2];
-    my @bowtie2_output = @{$_[3]};
-    #print join " ", @bowtie2_output;
+    my $num_total_hits = $_[3];
+    my @bowtie2_output = @{$_[4]};
 
     # All the info is in the first array element, so just store it as a string
     # such that it can be split up into pieces
@@ -271,22 +272,17 @@ sub summarize_align
     $sample_summary =~ s/^\s+//;
     # Store each line as its own array element
     my @align_info = split(/\n/, $sample_summary);
-
-    ## Can go on a line-by-line basis, which appears to be consistent:
     # 1st line: # of input reads
     $align_info[0] =~ /(\d+)\s+reads;/;
     my $input_reads = $1;
-    # Fourth line: # of uniquely mapping reads
-    $align_info[3] =~ /(\d+)\s+\(\s?(\d+\.\d+\s?%).+ aligned concordantly exactly 1 time/;
-    my $unique_reads = $1;
-    my $percent_unique = $2;
-    # Last line: % overall alignment rate
-    $align_info[$#align_info] =~ /(\d+\.\d+\s?%)\s+overall alignment rate/;
-    my $overall_alignment = $1;
+
+    # Calculate percentages
+    my $overall_alignment = int (($num_total_hits/$input_reads)*100);
+    my $percent_unique = int (($num_unique_hits/$input_reads)*100);
 
     my $summary_file = "summary_files/$population\_align\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";
-    print SUMMARY "$sample\t$input_reads\t$unique_reads\t$percent_unique\t$overall_alignment\n";
+    print SUMMARY "$sample\t$input_reads\t$num_total_hits\t$overall_alignment\t$num_unique_hits\t$percent_unique\n";
     close SUMMARY or die "ERROR: Could not close $summary_file\n";
 }
 

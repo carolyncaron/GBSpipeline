@@ -242,7 +242,7 @@ if ( exists ( $ARGV[0] ) )
                 if ($config_hash{'BCFTOOLS_PATH'}) { $bcftools_dir = $config_hash{'BCFTOOLS_PATH'}; }
                     else { $bcftools_dir = $samtools_dir; }
                 if ($config_hash{'MODE'}) { $call_mode = $config_hash{'MODE'}; }
-                    else { report_missing('MODE'); }
+                    else { $call_mode = "single"; }
                 if ($config_hash{'SAMTOOLS_THREADS'}) { $samtools_threads = $config_hash{'SAMTOOLS_THREADS'}; }
                     else { $samtools_threads = "1"; }
                 if ($config_hash{'REFERENCE'}) { $reference_genome = $config_hash{'REFERENCE'}; }
@@ -546,13 +546,26 @@ Abecasis G., Durbin R. and 1000 Genome Project Data Processing Subgroup (2009) T
 alignment/map (SAM) format and SAMtools. Bioinformatics, 25, 2078-9.)> and calls SNPs using
 B<bcftools>.
 
+NOTE: It is not recommended to use different versions of SAMtools and bcftools together.
+
 B<SAMTOOLS_PATH> is the location of the user's copy of SAMtools (v1.0+). Warning: previous versions
 will not work!
 
 B<BCFTOOLS_PATH> is the location of the user's copy of bcftools (v1.0+). Warning: previous versions
 will not work! If you choose to have both SAMtools and bcftools executables in a common directory
 (as was the default prior to v1.0+), then this argument can be left blank in the configuration file
-(at which point, the pipeline will assume the same path as SAMTOOLS_PATH).
+(by default, the pipeline will assume the same path as SAMTOOLS_PATH).
+
+B<MODE> can be set to one of: single, multi or both (case insensitive). Prior to a recent update, this
+step would call SNPs for each sample against the reference individually. You can still achieve this by
+specifying "single" as the mode for SNP calling in the config file. If you want to call SNPs on the
+entire population together, you can specify "multi". If you are interested in both of these, you can
+specify "both".
+
+Lastly, you can specify the number of threads for SAMtools to use where it is possible (samtools view
+and samtools sort in this case) through the config file:
+
+    B<SAMTOOLS_THREADS>: 1
 
 =back
 
@@ -594,9 +607,13 @@ Provides an overview of the alignment of reads to a reference genome.
 
  Sample: The sample name OR the index used to distinguish this sample
  Input Reads: Number of reads when the alignment began
- Unique Reads: Number of reads that mapped uniquely to the genome
- % Unique: The % of uniquely mapping reads
+ Total Hits: Total number of successful alignments made
  Overall Alignment Rate: The % of input reads that successfully aligned
+ Unique Hits: Number of reads that mapped uniquely to the genome, including the "best" hit for multi-mapped reads
+    (NOTE: this is different from the "Unique Reads" column in previous versions of the pipeline, as the best hits
+    were not determined until the SNP-calling step. Please now refer to the bowtie2 logs for the previous value.
+    Unique Hits is more informative as it indicates the number of reads that are used in the subsequent step.)
+ Percent Unique: The percent of unique hits
 
 =back
 
