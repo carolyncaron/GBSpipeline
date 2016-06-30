@@ -38,7 +38,7 @@ sub f4
 
     # Check that call mode is valid
     unless ($call_mode =~ /single|multi|both/i)
-    {   die "ERROR: \"$call_mode\" is not a valid mode for calling SNPs. Please fix this in the config file.\n";  }
+    {   die "ERROR: \"$call_mode\" is not a valid mode for calling SNPs. Please fix this in the configuration file.\n";  }
 
     unless ( -f $index_file && -r $index_file )
     {   die "ERROR: $index_file does not exist or is unreadable.\n";    }
@@ -127,7 +127,14 @@ sub f4
             ## 5. Use bcftools to call SNPs using bcf files
             ### Parameters prior to 1.0: -c -g -I -v
             print_progress($step_count++, $total_steps, " $sample: Calling SNPs        ");
-            $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $bcf_file > $vcf_file";
+            if ($bcf_version =~ /1.0|1.1|1.2/)
+            {
+                $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $bcf_file > $vcf_file";
+            } else
+            {
+                $cmd = "$bcftools_dir/bcftools call -m -v -V indels -A --threads $samtools_threads $bcf_file > $vcf_file";
+            }
+            #$cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $bcf_file > $vcf_file";
             ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
             unless ($success)
             {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
@@ -167,8 +174,15 @@ sub f4
         unless ($success)
         {   die "ERROR: Failed to change the header in $bcf_file: $error_message\n@$stderr_buf";   }
 
+        # Depending on our version of bcftools, use the old caller (v1.0-1.2) or the new caller (v1.3+)
         print_progress($step_count++, $total_steps, " Calling SNPs for all samples        ");
-        $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $rehead_bcf > $vcf_file";
+        if ($bcf_version =~ /1.0|1.1|1.2/)
+        {
+            $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $rehead_bcf > $vcf_file";
+        } else
+        {
+            $cmd = "$bcftools_dir/bcftools call -m -v -V indels -A $rehead_bcf --threads $samtools_threads > $vcf_file";
+        }
         ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
         unless ($success)
         {   die "ERROR: Failed to call SNPs/indels using bcftools:\n$error_message\n@$stderr_buf";   }
@@ -176,7 +190,7 @@ sub f4
         system("rm $sample_list");
     }
 
-    print "\n Processed reads located in:\n  $output_dir/align/\n  $output_dir/variants/ \n";
+    print "\n Processed alignment and variant call format files located in:\n  $output_dir/align/\n  $output_dir/variants/ \n";
 }
 
 

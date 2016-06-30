@@ -178,7 +178,7 @@ sub function1
             # Four steps per index. Break it down so the progress bar reports more often.
             my $step_count = $index_count*4;
             my $total_steps = $num_indices*4;
-            print_progress($step_count++, $total_steps, " Current sample: $sample        ");
+            print_progress($step_count++, $total_steps, "  Current sample: $sample        ");
 
             ## 1. Search R1 reads for each barcode at the start of the sequence
             # (grep -A 2 -B 1 options: include 2 lines after, 1 line before match)
@@ -216,6 +216,7 @@ sub function1
             #R2_READS->flush();
             select(STDOUT);
             close R2_READS or die "ERROR: Could not close $R2_matches\n";
+            print_progress($step_count++, $total_steps, "                                 ");
 
             $index_count++;
         }
@@ -224,7 +225,7 @@ sub function1
 
     # Search for reads that are missing a barcode
     # First create a master file containing headers of R1 reads with found indices
-    print "\n Handling reads without an index... ";
+    print_progress($num_indices, $num_indices, " Handling reads without an index... ");
     my $indexed_list = "$output_dir/tmp/indexed.list";
     my $concat_cmd = "cat $output_dir/tmp/*\_$population.list > $indexed_list";
     ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
@@ -391,16 +392,21 @@ sub get_id
     my $file = $_[0];
 
     open FILE, $file or die "ERROR: Could not open $file\n";
-    do
-    {
-        my $id1     = <FILE>;
-        my $seq     = <FILE>;
-        my $id2     = <FILE>;
-        my $qual    = <FILE>;
 
-        print $id1;
+    # Check if the file is empty - this could arise if no reads matched a particular index
+    unless (-z $file)
+    {
+        do
+        {
+            my $id1     = <FILE>;
+            my $seq     = <FILE>;
+            my $id2     = <FILE>;
+            my $qual    = <FILE>;
+
+            print $id1;
+        }
+        while (!eof(FILE));
     }
-    while (!eof(FILE));
     close FILE or die "ERROR: Could not close $file\n";
 }
 

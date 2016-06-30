@@ -41,7 +41,7 @@ use Data::Dumper;
 # Check if command line flags were provided: this overrides any non-flag options
 use Getopt::Long;
 
-my ( $config_file, $call_multi_sample, $call_single_sample, $help );
+my ( $config_file, $help );
 GetOptions ('c|config=s' => \$config_file,
             'help' => \$help,
            );
@@ -253,6 +253,9 @@ if ( exists ( $ARGV[0] ) )
             {
                 $samtools_dir = $args[0];
                 $bcftools_dir = $args[1];
+                ## Here the call mode is set to "single" since it is assumed that parameters were provided on the
+                ## command line to repeat a run from a time before the pipeline supported a config file, hence it
+                ## was also before the pipeline handled SNP calling on multiple samples.
                 $call_mode = "single";
             }
             else

@@ -277,8 +277,15 @@ sub summarize_align
     my $input_reads = $1;
 
     # Calculate percentages
-    my $overall_alignment = int (($num_total_hits/$input_reads)*100);
-    my $percent_unique = int (($num_unique_hits/$input_reads)*100);
+    my ($overall_alignment, $percent_unique) = '';
+    unless (($num_total_hits || $input_reads) == 0)
+    {
+        $overall_alignment = (($num_total_hits/$input_reads)*100);
+    }
+    unless (($num_unique_hits || $input_reads) == 0)
+    {
+        $percent_unique = (($num_unique_hits/$input_reads)*100);
+    }
 
     my $summary_file = "summary_files/$population\_align\_summary.txt";
     open SUMMARY, ">>$summary_file" or die "ERROR: Could not open $summary_file\n";

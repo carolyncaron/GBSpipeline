@@ -115,7 +115,7 @@ sub f2
     {
         chomp($sample);
         $sample =~ s/ //g;
-        print_progress($sample_count, $num_samples, "Current sample: $sample       ");
+        print_progress($sample_count, $num_samples, "  Current sample: $sample       ");
 
         my $R1_reads = "$output_dir/demultiplex/$sample\_$population\_R1.fastq";
         my $R2_reads = "$output_dir/demultiplex/$sample\_$population\_R2.fastq";
