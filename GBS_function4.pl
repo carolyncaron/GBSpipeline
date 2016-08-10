@@ -129,10 +129,10 @@ sub f4
             print_progress($step_count++, $total_steps, " $sample: Calling SNPs        ");
             if ($bcf_version =~ /1.0|1.1|1.2/)
             {
-                $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $bcf_file > $vcf_file";
+                $cmd = "$bcftools_dir/bcftools call -c -v -V indels $bcf_file > $vcf_file";
             } else
             {
-                $cmd = "$bcftools_dir/bcftools call -m -v -V indels -A --threads $samtools_threads $bcf_file > $vcf_file";
+                $cmd = "$bcftools_dir/bcftools call -m -v -V indels --threads $samtools_threads $bcf_file > $vcf_file";
             }
             #$cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $bcf_file > $vcf_file";
             ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
