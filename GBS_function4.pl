@@ -118,7 +118,7 @@ sub f4
             ## 4. Identify genomic variants using mpileup
             ### Since version 1.0: -D deprecated, use -t DP instead
             print_progress($step_count++, $total_steps, " $sample: Identifying variants");
-            $cmd = "$samtools_dir/samtools mpileup -f $reference_genome -g -I -B -t DP ";
+            $cmd = "$samtools_dir/samtools mpileup -f $reference_genome -g -I -B -t DP,AD ";
             $cmd .= "$mpileup_input_file > $bcf_file";
             ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
             unless ($success)
@@ -129,10 +129,10 @@ sub f4
             print_progress($step_count++, $total_steps, " $sample: Calling SNPs        ");
             if ($bcf_version =~ /1.0|1.1|1.2/)
             {
-                $cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $bcf_file > $vcf_file";
+                $cmd = "$bcftools_dir/bcftools call -c -v -V indels $bcf_file > $vcf_file";
             } else
             {
-                $cmd = "$bcftools_dir/bcftools call -m -v -V indels -A --threads $samtools_threads $bcf_file > $vcf_file";
+                $cmd = "$bcftools_dir/bcftools call -m -v -V indels --threads $samtools_threads $bcf_file > $vcf_file";
             }
             #$cmd = "$bcftools_dir/bcftools call -c -v -V indels -A $bcf_file > $vcf_file";
             ( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) = run( command => $cmd, verbose => 0 );
