@@ -352,7 +352,7 @@ sub print_progress
     select(STDOUT);
 
     # Check if a message was given, otherwise give it the empty string
-    unless ( length $message ) { $message = ""; }
+    unless ( defined $message and length $message ) { $message = ""; }
     # Calculate percentage of steps completed
     my $percent_complete = ($step_count/$num_steps)*100;
     my $steps;
