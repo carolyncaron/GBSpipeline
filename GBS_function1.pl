@@ -183,7 +183,7 @@ sub function1
             ## 1. Search R1 reads for each barcode at the start of the sequence
             # (grep -A 2 -B 1 options: include 2 lines after, 1 line before match)
             # Then remove the "--" separator between each read and save as a FASTQ file
-            system("grep -A 2 -B 1 ^$index $R1_file | grep -v ^- > $R1_with_index");
+            system("grep -A 2 -B 1 ^$index $R1_file | grep -v ^--\$ > $R1_with_index");
             print_progress($step_count++, $total_steps);
 
             ## 2.  Trim off barcodes from each read using the barcode length after accounting
